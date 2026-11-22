@@ -37,10 +37,12 @@ describe('pipeline', () => {
     const a = analyze(testImage(), settings);
     expect(a.width).toBe(200);
     expect(a.pxPerMm).toBe(10);
-    expect(a.palette).toHaveLength(3);
+    // red, black, white background + the white annulus enclosed by the black ring
+    expect(a.palette).toHaveLength(4);
     const deleted = a.palette.filter((p) => p.deleted);
     expect(deleted).toHaveLength(1);
     expect(deleted[0].rgb.every((c) => c > 240)).toBe(true);
+    expect(deleted[0].role).toBe('background');
     const mono = a.palette.filter((p) => p.monoInclude);
     expect(mono).toHaveLength(1);
     expect(mono[0].rgb.every((c) => c < 30)).toBe(true);
@@ -55,8 +57,9 @@ describe('pipeline', () => {
     const a = analyze(testImage(), settings);
     const r = await render(a, a.palette, settings, boxTracer);
     expect(validateCricutSvg(r.svg)).toEqual([]);
-    expect(r.svg.match(/<g /g)).toHaveLength(2);
-    expect(r.layers).toHaveLength(2);
+    expect(r.svg.match(/<g /g)).toHaveLength(3);
+    expect(r.layers).toHaveLength(3);
+    expect(r.layers.map((l) => l.id)).toContain('weiss');
     for (const l of r.layers) {
       expect(validateCricutSvg(l.svg)).toEqual([]);
       expect(l.svg.match(/<g /g)).toHaveLength(1);
@@ -120,7 +123,8 @@ describe('pipeline', () => {
         for (let dx = 0; dx < 2; dx++) data.set([0, 0, 0, 255], ((sy + dy) * size + sx + dx) * 4);
     const s: Settings = { ...settings, colorCount: 4, mode: 'mono' };
     const a = analyze({ width: size, height: size, data }, s);
-    expect(a.palette).toHaveLength(3);
+    // red, blue, white background, white annulus inside the blue ring
+    expect(a.palette).toHaveLength(4);
     expect(a.palette.every((p) => p.pixelCount > 0)).toBe(true);
     const mono = a.palette.filter((p) => p.monoInclude);
     expect(mono).toHaveLength(1);
@@ -135,7 +139,53 @@ describe('pipeline', () => {
     expect(needsReanalysis(settings, { ...settings, overlapMm: 1 })).toBe(false);
     expect(needsReanalysis(settings, { ...settings, mode: 'mono' })).toBe(false);
     expect(needsReanalysis(settings, { ...settings, stackOnDarkest: true })).toBe(false);
-    for (const patch of [{ colorCount: 4 }, { smoothing: 0.1 }, { minPartAreaMm2: 3 }, { targetWidthCm: 10 }])
+    for (const patch of [
+      { colorCount: 4 },
+      { smoothing: 0.1 },
+      { minPartAreaMm2: 3 },
+      { targetWidthCm: 10 },
+      { gapCloseMm: 2 },
+    ])
       expect(needsReanalysis(settings, { ...settings, ...patch })).toBe(true);
+  });
+  it('keeps enclosed background colour as an interior entry', async () => {
+    const a = analyze(testImage(), settings);
+    const bg = a.palette.find((p) => p.role === 'background')!;
+    const inner = a.palette.find((p) => p.role === 'interior')!;
+    expect(inner).toBeDefined();
+    expect(inner.deleted).toBe(false);
+    expect(inner.monoInclude).toBe(false);
+    expect(inner.rgb).toEqual(bg.rgb);
+    expect(inner.name).toBe(bg.name);
+    expect(inner.id).not.toBe(bg.id);
+    // annulus 50 <= r < 70 around (100,100): pi*(70^2-50^2) ~ 7540 px
+    expect(inner.pixelCount).toBeGreaterThan(6500);
+    expect(inner.pixelCount).toBeLessThan(8500);
+    expect(a.palette.filter((p) => !p.role).every((p) => p.rgb.some((c) => c < 240))).toBe(true);
+    // Mono still cuts only the darkest colour.
+    const mono = { ...settings, mode: 'mono' as const };
+    const r = await render(a, a.palette, mono, boxTracer);
+    expect(r.layers.map((l) => l.name)).toEqual(['schnitt']);
+  });
+
+  it('removes interior areas below the minimum part size', () => {
+    // White background, black square 60x60 with a white hole of side `hole` in its centre.
+    const img = (hole: number): RGBAImage => {
+      const size = 100;
+      const data = new Uint8ClampedArray(size * size * 4).fill(255);
+      for (let y = 20; y < 80; y++)
+        for (let x = 20; x < 80; x++) {
+          const inHole = Math.abs(x - 49.5) < hole / 2 && Math.abs(y - 49.5) < hole / 2;
+          if (!inHole) data.set([0, 0, 0, 255], (y * size + x) * 4);
+        }
+      return { width: size, height: size, data };
+    };
+    // 1 cm wide -> 10 px/mm; minimum 1 mm^2 = 100 px.
+    const s: Settings = { ...settings, colorCount: 2, targetWidthCm: 1, gapCloseMm: 0 };
+    expect(analyze(img(6), s).palette.some((p) => p.role === 'interior')).toBe(false);
+    const big = analyze(img(20), s).palette.find((p) => p.role === 'interior');
+    // 20x20 hole, corners slightly rounded by the majority filter.
+    expect(big?.pixelCount).toBeGreaterThan(360);
+    expect(big?.pixelCount).toBeLessThanOrEqual(400);
   });
 });

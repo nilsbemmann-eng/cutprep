@@ -15,6 +15,8 @@ export interface Settings {
   overlapMm: number;
   mode: 'multi' | 'mono';
   stackOnDarkest: boolean;
+  /** Outline gaps up to about twice this width still enclose background-coloured areas. */
+  gapCloseMm: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -25,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   overlapMm: 0.4,
   mode: 'multi',
   stackOnDarkest: false,
+  gapCloseMm: 1,
 };
 
 export interface PaletteEntry {
@@ -39,6 +42,12 @@ export interface PaletteEntry {
   mergedInto: number | null;
   monoInclude: boolean;
   pixelCount: number;
+  /**
+   * 'background': the detected background cluster (outside the motif).
+   * 'interior': background-coloured areas enclosed by the motif, split off as their own entry.
+   * Absent for all other colours.
+   */
+  role?: 'background' | 'interior';
 }
 
 export interface LayerMask {

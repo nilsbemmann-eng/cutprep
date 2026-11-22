@@ -1,4 +1,5 @@
 import { germanColorName, rgbToLab } from './color';
+import { splitInteriorBackground } from './interior';
 import { majorityFilter, removeSmallRegions } from './labels';
 import { buildLayerMasks } from './layers';
 import { autoLevels, edgeMask, flattenAlpha, resizeBilinear, workingSize } from './preprocess';
@@ -38,7 +39,8 @@ export function needsReanalysis(prev: Settings, next: Settings): boolean {
     prev.colorCount !== next.colorCount ||
     prev.smoothing !== next.smoothing ||
     prev.minPartAreaMm2 !== next.minPartAreaMm2 ||
-    prev.targetWidthCm !== next.targetWidthCm
+    prev.targetWidthCm !== next.targetWidthCm ||
+    prev.gapCloseMm !== next.gapCloseMm
   );
 }
 
@@ -68,25 +70,44 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
     transparent,
     fitExclude: edgeMask(leveled),
   });
+  const minAreaPx = settings.minPartAreaMm2 * pxPerMm * pxPerMm;
   let labels = majorityFilter(raw, width, height, Math.round(settings.smoothing * 3));
-  labels = removeSmallRegions(labels, width, height, settings.minPartAreaMm2 * pxPerMm * pxPerMm);
-
-  const counts = new Array<number>(colors.length).fill(0);
-  for (let i = 0; i < labels.length; i++) if (labels[i] >= 0) counts[labels[i]]++;
+  labels = removeSmallRegions(labels, width, height, minAreaPx);
 
   const bg = detectBackground(labels, width, height);
+  // Background-coloured areas inside the motif (e.g. white fur) get a label of their own
+  // (colors.length, so it never collides with a cluster id) instead of being deleted.
+  const split = splitInteriorBackground(
+    labels,
+    width,
+    height,
+    bg,
+    settings.gapCloseMm * pxPerMm,
+    colors.length,
+  );
+  if (split.interiorLabel !== null) labels = removeSmallRegions(split.labels, width, height, minAreaPx);
+
+  const entryColors = bg !== null ? [...colors, colors[bg]] : colors;
+  const counts = new Array<number>(entryColors.length).fill(0);
+  for (let i = 0; i < labels.length; i++) if (labels[i] >= 0) counts[labels[i]]++;
+
   // Clusters wiped out by cleanup are dropped; ids keep their label value.
-  const palette: PaletteEntry[] = colors
-    .map((rgb, id) => ({
-      id,
-      rgb,
-      originalRgb: [...rgb] as RGB,
-      name: germanColorName(rgb),
-      deleted: id === bg,
-      mergedInto: null,
-      monoInclude: false,
-      pixelCount: counts[id],
-    }))
+  const palette: PaletteEntry[] = entryColors
+    .map((rgb, id): PaletteEntry => {
+      const e: PaletteEntry = {
+        id,
+        rgb: [...rgb] as RGB,
+        originalRgb: [...rgb] as RGB,
+        name: germanColorName(rgb),
+        deleted: id === bg,
+        mergedInto: null,
+        monoInclude: false,
+        pixelCount: counts[id],
+      };
+      if (id === bg) e.role = 'background';
+      else if (id === colors.length) e.role = 'interior';
+      return e;
+    })
     .filter((e) => e.pixelCount > 0);
 
   let darkest: PaletteEntry | null = null;
