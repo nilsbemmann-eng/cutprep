@@ -145,7 +145,8 @@ export function removeSmallRegions(labels: Int16Array, w: number, h: number, min
  * (4-connected, breadth-first) pixel that keeps its label, so a dissolved cluster is split
  * between its neighbours along the middle. -1 pixels neither change nor spread; dissolved
  * pixels that no kept label can reach stay as they were. Pixels flagged in `pixels` are
- * refilled the same way whatever their label. Returns a new array.
+ * refilled the same way whatever their label. `labels` itself is relabelled in place and
+ * returned; `queue` is an optional scratch buffer of at least w·h entries.
  */
 export function dissolveLabels(
   labels: Int16Array,
@@ -153,17 +154,35 @@ export function dissolveLabels(
   h: number,
   dissolve: ReadonlySet<number>,
   pixels?: Uint8Array,
+  queue: Int32Array = new Int32Array(w * h),
 ): Int16Array {
-  const out = labels.slice();
+  const out = labels;
   const total = w * h;
   if ((dissolve.size === 0 && !pixels) || total === 0) return out;
   const open = new Uint8Array(total);
-  const queue = new Int32Array(total);
   let tail = 0;
+  let maxLabel = -1;
+  for (const l of dissolve) if (l > maxLabel) maxLabel = l;
+  const gone = new Uint8Array(maxLabel + 1);
+  for (const l of dissolve) if (l >= 0) gone[l] = 1;
+  let any = false;
   for (let i = 0; i < total; i++) {
-    if (labels[i] < 0) continue;
-    if (dissolve.has(labels[i]) || pixels?.[i]) open[i] = 1;
-    else queue[tail++] = i;
+    const l = labels[i];
+    if (l >= 0 && ((l <= maxLabel && gone[l]) || (pixels !== undefined && pixels[i]))) {
+      open[i] = 1;
+      any = true;
+    }
+  }
+  if (!any) return out;
+  // Seeds: kept pixels next to an open one (the rest could never reach anything first).
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      const i = row + x;
+      if (open[i] || labels[i] < 0) continue;
+      if ((x > 0 && open[i - 1]) || (x < w - 1 && open[i + 1]) || (y > 0 && open[i - w]) || (y < h - 1 && open[i + w]))
+        queue[tail++] = i;
+    }
   }
   for (let head = 0; head < tail; head++) {
     const p = queue[head];

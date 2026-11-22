@@ -58,10 +58,15 @@ describe('real fixture outlines (grinch, defaults)', () => {
     // with L* 40-60; 5.8 % is farther than 3 px from any reference pixel (faint strokes on
     // the white fur and hand), 3.3 % is light (L* >= 60). A flooded colour area would push
     // the last two up at once.
+    // Round 2 (gap closing): faint stroke parts up to L* 70 that hang on a line (hysteresis)
+    // and bridges across white gaps are added on purpose; both lie away from the L* < 40
+    // reference by definition. Measured: recall 93.8 %, outside 29.7 %, farther than 3 px
+    // 9.4 %, light 6.0 %, black layer 10.0 % of the image (9.6 % before).
     expect(hit / refN).toBeGreaterThanOrEqual(0.9);
     expect(notRef / layer).toBeLessThan(0.32);
-    expect(far / layer).toBeLessThan(0.08);
-    expect(light / layer).toBeLessThan(0.05);
+    expect(far / layer).toBeLessThan(0.11);
+    expect(light / layer).toBeLessThan(0.08);
+    expect(layer / ref.length).toBeLessThan(0.11);
     // The dark-green anti-aliasing cluster no longer exists as a layer of its own.
     expect(a.palette.map((p) => p.name)).not.toContain('dunkelgrün');
   }, 60000);

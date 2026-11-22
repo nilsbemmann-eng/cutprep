@@ -192,9 +192,9 @@ describe('analyze with outlinesBlack', () => {
 describe('squareFilter', () => {
   it('matches a brute-force clipped window max/min', () => {
     let seed = 7;
-    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648) * 100;
+    const rnd = () => Math.floor(((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648) * 256);
     for (const [w, h, r] of [[17, 11, 2], [5, 9, 3], [30, 4, 1], [3, 3, 4], [23, 19, 5]]) {
-      const a = Float32Array.from({ length: w * h }, rnd);
+      const a = Uint8Array.from({ length: w * h }, rnd);
       for (const max of [true, false]) {
         const got = squareFilter(a, w, h, r, max);
         for (let y = 0; y < h; y++)
