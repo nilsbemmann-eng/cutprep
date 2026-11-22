@@ -20,6 +20,10 @@ export function setupControls(root: HTMLElement, onChange: () => void): Controls
         <input type="range" id="smoothing" min="0" max="1" step="0.05" value="${d.smoothing}" /></label>
       <label>Überlappung (mm)
         <input type="number" id="overlapMm" min="0" max="3" step="0.1" value="${d.overlapMm}" /></label>
+      <label>Konturlücken schließen (mm) <output id="o-gap">${d.gapCloseMm}</output>
+        <input type="range" id="gapCloseMm" min="0" max="3" step="0.1" value="${d.gapCloseMm}"
+          aria-describedby="gapCloseMm-hint" />
+        <small id="gapCloseMm-hint">Hintergrundfarbe im Motiv (z. B. weißes Fell) bleibt erhalten, solange die Kontur höchstens so weit offen ist. 0 = nur ganz umschlossene Flächen.</small></label>
       <label>Modus
         <select id="mode">
           <option value="multi">Mehrfarbig</option>
@@ -42,11 +46,13 @@ export function setupControls(root: HTMLElement, onChange: () => void): Controls
     overlapMm: clamp(num('overlapMm', d.overlapMm), 0, 3),
     mode: $<HTMLSelectElement>('mode').value === 'mono' ? 'mono' : 'multi',
     stackOnDarkest: $<HTMLInputElement>('stackOnDarkest').checked,
+    gapCloseMm: clamp(num('gapCloseMm', d.gapCloseMm), 0, 3),
   });
 
   root.addEventListener('input', () => {
     $('o-colors').textContent = $<HTMLInputElement>('colorCount').value;
     $('o-smooth').textContent = $<HTMLInputElement>('smoothing').value;
+    $('o-gap').textContent = $<HTMLInputElement>('gapCloseMm').value;
     onChange();
   });
   root.addEventListener('change', onChange);

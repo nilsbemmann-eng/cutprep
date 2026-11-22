@@ -80,4 +80,40 @@ describe('carryOverPaletteEdits', () => {
     carryOverPaletteEdits(old, fresh);
     expect(fresh[0].deleted).toBe(false);
   });
+  it('never pairs the background with the interior entry of the same colour', () => {
+    // User deleted the interior white and recoloured the background (unusual, but possible).
+    const old = [
+      entry(0, [250, 250, 250], 'weiß', { role: 'background', deleted: false }),
+      entry(1, BLACK, 'schwarz'),
+      entry(6, [250, 250, 250], 'weiß', { role: 'interior', deleted: true }),
+    ];
+    // Re-analysis: the interior white is now slightly closer to the old background colour.
+    const fresh = [
+      entry(0, [253, 253, 253], 'weiß', { role: 'interior' }),
+      entry(1, [22, 22, 22], 'schwarz'),
+      entry(2, [240, 240, 240], 'weiß', { role: 'background', deleted: true }),
+    ];
+    const out = carryOverPaletteEdits(old, fresh);
+    expect(out.find((e) => e.role === 'interior')!.deleted).toBe(true);
+    expect(out.find((e) => e.role === 'background')!.deleted).toBe(false);
+    expect(out.find((e) => e.name === 'schwarz')!.deleted).toBe(false);
+  });
+
+  it('does not pair role-less entries with background or interior entries', () => {
+    const old = [entry(0, WHITE, 'weiß', { deleted: true })];
+    const fresh = [entry(0, WHITE, 'weiß', { role: 'interior' })];
+    expect(carryOverPaletteEdits(old, fresh)[0].deleted).toBe(false);
+  });
+  it('drops interior edits when the re-analysis has no interior entry', () => {
+    const old = [
+      entry(0, WHITE, 'weiß', { role: 'background', deleted: false }),
+      entry(1, RED, 'rot', { mergedInto: 6 }),
+      entry(6, WHITE, 'weiß', { role: 'interior', deleted: true }),
+    ];
+    const fresh = [entry(0, WHITE, 'weiß', { role: 'background', deleted: true }), entry(1, RED, 'rot')];
+    const out = carryOverPaletteEdits(old, fresh);
+    expect(out).toHaveLength(2);
+    expect(out[0].deleted).toBe(false); // background keeps its own edit
+    expect(out[1].mergedInto).toBeNull(); // merge into the vanished interior is reset
+  });
 });
