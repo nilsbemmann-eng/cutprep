@@ -5,6 +5,7 @@ import { buildLayerMasks } from './layers';
 import { autoLevels, edgeMask, flattenAlpha, resizeBilinear, workingSize } from './preprocess';
 import { detectBackground, kmeansLab } from './quantize';
 import { buildSvg, layerIds, scalePathData } from './svg';
+import { startTimer } from './timing';
 import type { Tracer } from './trace';
 import type { PaletteEntry, RGB, RGBAImage, Settings } from './types';
 
@@ -58,21 +59,28 @@ function resizeMaskNearest(mask: Uint8Array, sw: number, sh: number, w: number, 
 }
 
 export function analyze(src: RGBAImage, settings: Settings): Analysis {
+  const timer = import.meta.env.DEV ? startTimer('analyze') : null;
   const { width, height, pxPerMm } = workingSize(src.width, src.height, settings.targetWidthCm);
   const flat = flattenAlpha(src);
   const resized = resizeBilinear(flat.image, width, height);
   const transparent = resizeMaskNearest(flat.transparent, src.width, src.height, width, height);
+  timer?.lap(`resize ${width}x${height}`);
   const leveled = autoLevels(resized);
+  const fitExclude = edgeMask(leveled);
+  timer?.lap('levels+edges');
 
   // Anti-aliasing seams would otherwise become clusters of their own and crowd
   // out small real colours; they are only left out of the fit, not the labelling.
   const { palette: colors, labels: raw } = kmeansLab(leveled, settings.colorCount, {
     transparent,
-    fitExclude: edgeMask(leveled),
+    fitExclude,
   });
+  timer?.lap('kmeans');
   const minAreaPx = settings.minPartAreaMm2 * pxPerMm * pxPerMm;
   let labels = majorityFilter(raw, width, height, Math.round(settings.smoothing * 3));
+  timer?.lap('majority');
   labels = removeSmallRegions(labels, width, height, minAreaPx);
+  timer?.lap('removeSmall');
 
   const bg = detectBackground(labels, width, height);
   // Background-coloured areas inside the motif (e.g. white fur) get a label of their own
@@ -85,7 +93,11 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
     settings.gapCloseMm * pxPerMm,
     colors.length,
   );
-  if (split.interiorLabel !== null) labels = removeSmallRegions(split.labels, width, height, minAreaPx);
+  timer?.lap('background+interior');
+  if (split.interiorLabel !== null) {
+    labels = removeSmallRegions(split.labels, width, height, minAreaPx);
+    timer?.lap('removeSmall#2');
+  }
 
   const entryColors = bg !== null ? [...colors, colors[bg]] : colors;
   const counts = new Array<number>(entryColors.length).fill(0);
@@ -122,6 +134,8 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
     }
   }
   if (darkest) darkest.monoInclude = true;
+  timer?.lap('palette');
+  timer?.done();
 
   return { width, height, pxPerMm, labels, palette };
 }
@@ -132,7 +146,9 @@ export async function render(
   settings: Settings,
   tracer: Tracer,
 ): Promise<RenderResult> {
+  const timer = import.meta.env.DEV ? startTimer('render') : null;
   const masks = buildLayerMasks(a.labels, a.width, a.height, palette, settings, a.pxPerMm);
+  timer?.lap(`masks (${masks.length})`);
   const opts = {
     turdsize: Math.ceil(settings.minPartAreaMm2 * a.pxPerMm * a.pxPerMm),
     alphamax: 0.5 + settings.smoothing * 0.8,
@@ -145,6 +161,7 @@ export async function render(
     const raw = await tracer(m.mask, m.width, m.height, opts);
     const paths = raw.filter((d) => d.length > 0).map((d) => scalePathData(d, mmPerPx));
     if (paths.length > 0) traced.push({ name: m.name, color: m.color, paths });
+    timer?.lap(`trace ${m.name}`);
   }
 
   const ids = layerIds(traced.map((l) => l.name));
@@ -159,5 +176,8 @@ export async function render(
   if (settings.targetWidthCm > MAX_MATERIAL_WIDTH_CM) warnings.push(WIDTH_WARNING);
   if (layers.length === 0) warnings.push(NO_LAYER_WARNING);
 
-  return { svg: buildSvg(traced, widthMm, heightMm), layers, warnings };
+  const svg = buildSvg(traced, widthMm, heightMm);
+  timer?.lap('svg');
+  timer?.done();
+  return { svg, layers, warnings };
 }

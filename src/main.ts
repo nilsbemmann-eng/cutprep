@@ -110,9 +110,18 @@ function schedule(paletteOnly: boolean): void {
   }, DEBOUNCE_MS);
 }
 
+/** Dev only: stage timings reported by the worker (newest last). */
+const timings: { label: string; stages: [string, number][]; totalMs: number; at: number }[] = [];
+
 worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
   const msg = ev.data;
-  if (msg.type === 'analyzed') {
+  if (msg.type === 'timing') {
+    if (import.meta.env.DEV) {
+      timings.push({ label: msg.label, stages: msg.stages, totalMs: msg.totalMs, at: performance.now() });
+      const parts = msg.stages.map(([n, ms]) => `${n} ${ms.toFixed(0)}`).join(' | ');
+      console.debug(`[cutprep] ${msg.label} ${msg.totalMs.toFixed(0)} ms: ${parts}`);
+    }
+  } else if (msg.type === 'analyzed') {
     if (msg.requestId !== analyzeId) return;
     analyzing = false;
     analyzedSettings = requestedSettings;
@@ -190,5 +199,6 @@ if (import.meta.env.DEV) {
     get analyzedSettings() {
       return analyzedSettings;
     },
+    timings,
   };
 }

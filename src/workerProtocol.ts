@@ -12,4 +12,6 @@ export type WorkerRequest =
 export type WorkerResponse =
   | { type: 'analyzed'; requestId: number; analysis: Analysis }
   | { type: 'rendered'; requestId: number; result: RenderResult }
-  | { type: 'error'; op: 'analyze' | 'render'; requestId: number; message: string };
+  | { type: 'error'; op: 'analyze' | 'render'; requestId: number; message: string }
+  /** Dev builds only: stage timings of one analyze/render run (see core/timing.ts). */
+  | { type: 'timing'; label: string; stages: [string, number][]; totalMs: number };

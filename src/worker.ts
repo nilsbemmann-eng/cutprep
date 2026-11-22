@@ -1,4 +1,5 @@
 import { analyze, render, type Analysis } from './core/pipeline';
+import { setTimingSink } from './core/timing';
 import { createPotraceTracer, type Tracer } from './core/trace';
 import type { RGBAImage } from './core/types';
 import type { WorkerRequest, WorkerResponse } from './workerProtocol';
@@ -11,6 +12,11 @@ let tracerPromise: Promise<Tracer> | null = null;
 
 function post(msg: WorkerResponse, transfer: Transferable[] = []): void {
   (self as unknown as Worker).postMessage(msg, transfer);
+}
+
+// Dev only: forward stage timings to the page (worker consoles are easy to miss).
+if (import.meta.env.DEV) {
+  setTimingSink((label, stages, totalMs) => post({ type: 'timing', label, stages, totalMs }));
 }
 
 self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
