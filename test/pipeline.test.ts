@@ -188,4 +188,33 @@ describe('pipeline', () => {
     expect(big?.pixelCount).toBeGreaterThan(360);
     expect(big?.pixelCount).toBeLessThanOrEqual(400);
   });
+  it('never makes the interior copy of a dark background the mono colour', async () => {
+    // Black background, red ring (70 <= r < 90) enclosing black, blue square outside the ring.
+    const size = 200;
+    const data = new Uint8ClampedArray(size * size * 4);
+    for (let y = 0; y < size; y++)
+      for (let x = 0; x < size; x++) {
+        const r = Math.hypot(x - 100, y - 100);
+        let c = [0, 0, 0];
+        if (r >= 70 && r < 90) c = [220, 20, 20];
+        else if (x >= 175 && y >= 175 && x < 195 && y < 195) c = [30, 60, 200];
+        data.set([...c, 255], (y * size + x) * 4);
+      }
+    const s: Settings = { ...settings, colorCount: 3, mode: 'mono' };
+    const a = analyze({ width: size, height: size, data }, s);
+    const inner = a.palette.find((p) => p.role === 'interior')!;
+    expect(inner).toBeDefined();
+    expect(inner.monoInclude).toBe(false);
+    const mono = a.palette.filter((p) => p.monoInclude);
+    expect(mono).toHaveLength(1);
+    expect(mono[0].role).toBeUndefined();
+    // autoLevels stretches the colours; the darkest motif colour is the red ring.
+    expect(mono[0].rgb.some((c) => c > 150)).toBe(true);
+    const r = await render(a, a.palette, s, boxTracer);
+    expect(r.layers.map((l) => l.name)).toEqual(['schnitt']);
+    // Stacked multi mode: the base layer is a motif colour, not the interior black.
+    const stack = await render(a, a.palette, { ...s, mode: 'multi', stackOnDarkest: true }, boxTracer);
+    expect(stack.layers[0].name).not.toBe(`${inner.name}-basis`);
+    expect(stack.layers[0].name.endsWith('-basis')).toBe(true);
+  });
 });

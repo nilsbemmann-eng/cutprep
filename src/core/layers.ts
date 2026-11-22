@@ -142,6 +142,8 @@ export function buildLayerMasks(
     let darkest = layers[0];
     let darkestL = Infinity;
     for (const l of layers) {
+      // Background-coloured interior areas never become the base silhouette.
+      if (l.entry.role === 'interior') continue;
       const L = rgbToLab(l.entry.rgb)[0];
       if (L < darkestL) {
         darkestL = L;

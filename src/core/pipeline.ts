@@ -113,7 +113,8 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
   let darkest: PaletteEntry | null = null;
   let darkestL = Infinity;
   for (const e of palette) {
-    if (e.deleted) continue;
+    // The interior copy of the background is never the cut colour (it stays a hole).
+    if (e.deleted || e.role === 'interior') continue;
     const L = rgbToLab(e.rgb)[0];
     if (L < darkestL) {
       darkestL = L;
