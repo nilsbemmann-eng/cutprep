@@ -31,7 +31,7 @@ export function setupControls(root: HTMLElement, onChange: () => void): Controls
         </select></label>
       <label class="check"><input type="checkbox" id="stackOnDarkest" /> Schwarz als Basis-Ebene</label>
       <label class="check"><input type="checkbox" id="outlinesBlack" ${d.outlinesBlack ? 'checked' : ''}
-          aria-describedby="outlinesBlack-hint" /> Konturen komplett in Schwarz
+          aria-describedby="outlinesBlack-hint" /> <span>Konturen komplett in Schwarz</span>
         <small id="outlinesBlack-hint">Dunkle Linien – auch dünne – landen vollständig auf der schwarzen Ebene, statt in Grün, Rot oder Grau zu zerfallen.</small></label>
     </div>`;
   const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>('#' + id)!;
