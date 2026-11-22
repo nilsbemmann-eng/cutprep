@@ -71,6 +71,8 @@ function sendAnalyze(newImage?: RGBAImage): void {
   analyzing = true;
   // Invalidate any render still in flight: it belongs to the previous image/settings.
   renderId++;
+  // The shown result no longer matches the settings: no export until the new one arrives.
+  exporter.setEnabled(false);
   preview.setBusy('Analysiere Bild…');
   const msg: WorkerRequest = { type: 'analyze', requestId: ++analyzeId, settings, image: newImage };
   worker.postMessage(msg, newImage ? [newImage.data.buffer] : []);
@@ -86,6 +88,7 @@ function clearResult(): void {
 
 function sendRender(): void {
   const settings = controls.getSettings();
+  exporter.setEnabled(false);
   preview.setBusy('Berechne Vorschau…');
   const msg: WorkerRequest = {
     type: 'render',
@@ -110,9 +113,19 @@ function schedule(paletteOnly: boolean): void {
   }, DEBOUNCE_MS);
 }
 
+/** Dev only (null in production): stage timings reported by the worker, newest last. */
+const timings: { label: string; stages: [string, number][]; totalMs: number; at: number }[] | null =
+  import.meta.env.DEV ? [] : null;
+
 worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
   const msg = ev.data;
-  if (msg.type === 'analyzed') {
+  if (msg.type === 'timing') {
+    if (import.meta.env.DEV && timings) {
+      timings.push({ label: msg.label, stages: msg.stages, totalMs: msg.totalMs, at: performance.now() });
+      const parts = msg.stages.map(([n, ms]) => `${n} ${ms.toFixed(0)}`).join(' | ');
+      console.debug(`[cutprep] ${msg.label} ${msg.totalMs.toFixed(0)} ms: ${parts}`);
+    }
+  } else if (msg.type === 'analyzed') {
     if (msg.requestId !== analyzeId) return;
     analyzing = false;
     analyzedSettings = requestedSettings;
@@ -143,6 +156,8 @@ worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
       clearResult();
     }
     preview.setBusy(null);
+    // A failed render leaves the previous result: keep it dimmed and not exportable.
+    if (msg.op === 'render') preview.setStale(current !== null);
     preview.setError(`Fehler: ${msg.message}`);
   }
 };
@@ -190,5 +205,6 @@ if (import.meta.env.DEV) {
     get analyzedSettings() {
       return analyzedSettings;
     },
+    timings,
   };
 }

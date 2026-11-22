@@ -155,6 +155,13 @@ describe('buildLayerMasks', () => {
     expect(rowCount(out[0].mask, w, 0)).toBe(20);
   });
 
+  it('entries without pixels (also mono-included ones) produce no layer', () => {
+    const e = [...entries(), entry(2, [0, 200, 0], { monoInclude: true }), entry(3, [9, 9, 9], { mergedInto: 2 })];
+    const multi = buildLayerMasks(twoAreas(), w, h, e, DEFAULT_SETTINGS, 10);
+    expect(multi.map((l) => l.name)).toEqual(['f0', 'f1']);
+    expect(buildLayerMasks(twoAreas(), w, h, e, { ...DEFAULT_SETTINGS, mode: 'mono' }, 10)).toEqual([]);
+  });
+
   it('does not mutate inputs and handles large input quickly', () => {
     const labels = twoAreas();
     const copy = labels.slice();
