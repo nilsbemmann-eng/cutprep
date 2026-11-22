@@ -3,7 +3,8 @@
 /**
  * Majority (mode) filter with a square (2r+1)^2 window. Out-of-bounds pixels are ignored,
  * -1 pixels neither vote nor change. A pixel changes only if another label has strictly
- * more votes than its own. Returns a new array.
+ * more votes than its own; if several other labels tie for the most votes, the lowest
+ * label index wins. Returns a new array.
  */
 export function majorityFilter(labels: Int16Array, w: number, h: number, radius: number): Int16Array {
   const out = labels.slice();

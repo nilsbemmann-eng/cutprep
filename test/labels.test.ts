@@ -39,6 +39,50 @@ describe('majorityFilter', () => {
     expect(Array.from(out).some((v) => v === 1)).toBe(false);
   });
 
+  it('matches a naive reference on a pseudo-random map (r = 1, 2, 5)', () => {
+    const w = 13;
+    const h = 9;
+    let seed = 12345;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) >> 8) % 100;
+    const l = make(w, h, () => {
+      const v = rnd();
+      return v < 12 ? -1 : v % 3;
+    });
+    const naive = (r: number): number[] => {
+      const res: number[] = [];
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const cur = l[y * w + x];
+          if (cur < 0) { res.push(-1); continue; }
+          const votes = [0, 0, 0];
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+              const v = l[ny * w + nx];
+              if (v >= 0) votes[v]++;
+            }
+          }
+          let best = cur;
+          let bestV = votes[cur];
+          for (let k = 0; k < 3; k++) if (votes[k] > bestV) { bestV = votes[k]; best = k; }
+          res.push(best);
+        }
+      }
+      return res;
+    };
+    for (const r of [1, 2, 5]) {
+      expect(Array.from(majorityFilter(l, w, h, r))).toEqual(naive(r));
+    }
+  });
+
+  it('picks the lowest label when two other labels tie above the current one', () => {
+    const l = Int16Array.from([1, 1, 2, 1, 0, 2, 1, 2, 2]);
+    const out = majorityFilter(l, 3, 3, 1);
+    expect(out[4]).toBe(1);
+  });
+
   it('is fast enough on 2400x2400 with r=3', () => {
     const w = 2400;
     const l = make(w, w, (x, y) => ((x >> 5) + (y >> 5) + ((x * 7 + y * 13) % 5 === 0 ? 1 : 0)) % 6);
