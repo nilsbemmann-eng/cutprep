@@ -1,8 +1,50 @@
 import type { RGBAImage } from '../core/types';
 
-/** Decodes an image Blob to RGBA pixels; the browser applies EXIF orientation. */
+/** Longest side of the decoded image; matches the working-resolution cap (2400 px). */
+export const MAX_DECODE_SIDE = 2400;
+
+/** Size that fits width x height into MAX_DECODE_SIDE (never upscales), aspect kept. */
+export function decodeSize(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(1, MAX_DECODE_SIDE / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+/** Natural (EXIF-oriented) size from the header, without decoding all pixels. */
+function naturalSize(file: Blob): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Bild nicht lesbar'));
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * Decodes an image Blob to RGBA pixels, the longest side capped at
+ * MAX_DECODE_SIDE so large photos never exist at full resolution (memory on
+ * phones). The browser applies EXIF orientation.
+ */
 export async function loadImageFile(file: Blob): Promise<RGBAImage> {
-  const bmp = await createImageBitmap(file);
+  const natural = await naturalSize(file);
+  const target = decodeSize(natural.width, natural.height);
+  const bmp =
+    target.width === natural.width && target.height === natural.height
+      ? await createImageBitmap(file)
+      : await createImageBitmap(file, {
+          resizeWidth: target.width,
+          resizeHeight: target.height,
+          resizeQuality: 'high',
+        });
   try {
     const canvas = new OffscreenCanvas(bmp.width, bmp.height);
     const ctx = canvas.getContext('2d');

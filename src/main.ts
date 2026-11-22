@@ -1,7 +1,8 @@
 import './style.css';
 import { registerSW } from 'virtual:pwa-register';
+import { carryOverPaletteEdits } from './core/paletteCarry';
 import { needsReanalysis, type RenderResult } from './core/pipeline';
-import type { PaletteEntry, Settings } from './core/types';
+import type { PaletteEntry, RGBAImage, Settings } from './core/types';
 import type { WorkerRequest, WorkerResponse } from './workerProtocol';
 import { setupControls } from './ui/controls';
 import { setupExport, baseName } from './ui/export';
@@ -26,9 +27,16 @@ const el = (id: string) => app.querySelector<HTMLElement>('#' + id)!;
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let imageName = 'bild';
-let image: Awaited<ReturnType<typeof loadImageFile>> | null = null;
+/** True once an image was handed to the worker (which keeps the pixels). */
+let hasImage = false;
 let palette: PaletteEntry[] = [];
+/** Settings of the latest analysis request (decides whether a change needs a new one). */
+let requestedSettings: Settings | null = null;
+/** Settings of the last successful analysis; null after a failure. */
 let analyzedSettings: Settings | null = null;
+/** Palette whose edits the pending analysis should inherit; null for a new image. */
+let carryFrom: PaletteEntry[] | null = null;
+let analyzing = false;
 let current: RenderResult | null = null;
 let analyzeId = 0;
 let renderId = 0;
@@ -52,13 +60,26 @@ function showPalette(): void {
   });
 }
 
-function sendAnalyze(): void {
-  if (!image) return;
+/** newImage: transfers the pixels to the worker; otherwise it re-analyses its cached copy. */
+function sendAnalyze(newImage?: RGBAImage): void {
+  if (!hasImage) return;
   const settings = controls.getSettings();
-  analyzedSettings = settings;
+  requestedSettings = settings;
+  // Same image, new settings: keep the user's palette edits (an earlier pending carry
+  // source stays, since the current palette may not belong to the latest analysis yet).
+  carryFrom = newImage ? null : analyzing ? carryFrom : palette;
+  analyzing = true;
   preview.setBusy('Analysiere Bild…');
-  const msg: WorkerRequest = { type: 'analyze', requestId: ++analyzeId, image, settings };
-  worker.postMessage(msg);
+  const msg: WorkerRequest = { type: 'analyze', requestId: ++analyzeId, settings, image: newImage };
+  worker.postMessage(msg, newImage ? [newImage.data.buffer] : []);
+}
+
+/** Drops the result so nothing stale can be previewed or exported. */
+function clearResult(): void {
+  current = null;
+  exporter.setEnabled(false);
+  preview.setSvg(null);
+  preview.setWarnings([]);
 }
 
 function sendRender(): void {
@@ -75,12 +96,13 @@ function sendRender(): void {
 
 /** paletteOnly: palette edits never need a new analysis. */
 function schedule(paletteOnly: boolean): void {
-  if (!image) return;
+  if (!hasImage) return;
   clearTimeout(timer);
   timer = window.setTimeout(() => {
     const s = controls.getSettings();
-    if (!paletteOnly && analyzedSettings && needsReanalysis(analyzedSettings, s)) sendAnalyze();
-    else sendRender();
+    if (!paletteOnly && (!requestedSettings || needsReanalysis(requestedSettings, s))) sendAnalyze();
+    // A pending analysis renders with the latest settings once it arrives.
+    else if (!analyzing) sendRender();
     // The palette's "schneiden" column depends on the mode; avoid needless rebuilds (focus).
     if (s.mode !== paletteMode) showPalette();
   }, DEBOUNCE_MS);
@@ -90,7 +112,11 @@ worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
   const msg = ev.data;
   if (msg.type === 'analyzed') {
     if (msg.requestId !== analyzeId) return;
-    palette = msg.analysis.palette.map((p) => ({ ...p }));
+    analyzing = false;
+    analyzedSettings = requestedSettings;
+    const fresh = msg.analysis.palette;
+    palette = carryFrom ? carryOverPaletteEdits(carryFrom, fresh) : fresh.map((p) => ({ ...p }));
+    carryFrom = null;
     showPalette();
     sendRender();
   } else if (msg.type === 'rendered') {
@@ -102,7 +128,17 @@ worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
     preview.setWarnings(msg.result.warnings);
     exporter.setEnabled(true);
   } else if (msg.type === 'error') {
-    if (msg.requestId !== analyzeId && msg.requestId !== renderId) return;
+    if (msg.requestId !== (msg.op === 'analyze' ? analyzeId : renderId)) return;
+    if (msg.op === 'analyze') {
+      // The worker dropped its analysis: the next settings change starts a new one.
+      analyzing = false;
+      analyzedSettings = null;
+      requestedSettings = null;
+      carryFrom = null;
+      palette = [];
+      showPalette();
+      clearResult();
+    }
     preview.setBusy(null);
     preview.setError(`Fehler: ${msg.message}`);
   }
@@ -115,13 +151,16 @@ worker.onerror = () => {
 async function onFile(file: Blob & { name?: string }): Promise<void> {
   try {
     preview.setError(null);
-    image = await loadImageFile(file);
+    const image = await loadImageFile(file);
+    hasImage = true;
     imageName = baseName(file.name ?? 'bild');
-    current = null;
-    exporter.setEnabled(false);
+    analyzedSettings = null;
+    // The old palette and result belong to the previous image.
+    palette = [];
+    showPalette();
+    clearResult();
     preview.setOriginal(URL.createObjectURL(file));
-    preview.setSvg(null);
-    sendAnalyze();
+    sendAnalyze(image);
   } catch {
     preview.setError('Das Bild konnte nicht gelesen werden.');
   }
@@ -141,6 +180,12 @@ if (import.meta.env.DEV) {
     load: (f: File) => onFile(f),
     get current() {
       return current;
+    },
+    get palette() {
+      return palette;
+    },
+    get analyzedSettings() {
+      return analyzedSettings;
     },
   };
 }
