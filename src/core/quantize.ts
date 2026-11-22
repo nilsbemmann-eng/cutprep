@@ -84,12 +84,14 @@ function nearest(lab: Float32Array, o: number, cent: Float64Array, k: number): n
  * K-means in Lab space (k-means++ init, seeded). Fits on a random sample of
  * non-transparent, non-fit-excluded pixels, then assigns every opaque pixel. Label -1 = transparent.
  * Palette is sorted by pixel count descending; label i refers to palette[i].
+ * `lab` is the interleaved L,a,b buffer of all pixels (3 floats each), returned so callers
+ * can reuse it instead of converting the image again.
  */
 export function kmeansLab(
   img: RGBAImage,
   k: number,
   opts: KmeansOptions = {},
-): { palette: RGB[]; labels: Int16Array } {
+): { palette: RGB[]; labels: Int16Array; lab: Float32Array } {
   const n = img.width * img.height;
   const transparent = opts.transparent;
   const sampleSize = opts.sampleSize ?? 50000;
@@ -109,7 +111,7 @@ export function kmeansLab(
   };
   let m = collect(opts.fitExclude);
   if (opts.fitExclude && m < Math.floor(k) * 10) m = collect(undefined);
-  if (m === 0) return { palette: [], labels };
+  if (m === 0) return { palette: [], labels, lab };
 
   // Random sample via partial Fisher-Yates
   const s = Math.min(sampleSize, m);
@@ -240,7 +242,7 @@ export function kmeansLab(
     if (labels[i] >= 0) labels[i] = remap[labels[i]];
   }
   const palette = order.map((old) => labToRgb(cl[old].lab));
-  return { palette, labels };
+  return { palette, labels, lab };
 }
 
 /**

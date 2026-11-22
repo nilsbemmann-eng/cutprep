@@ -1,0 +1,225 @@
+import { describe, expect, it } from 'vitest';
+import { rgbToLab } from '../src/core/color';
+import { lightnessChroma, outlineMask, squareFilter } from '../src/core/outline';
+import { analyze } from '../src/core/pipeline';
+import { DEFAULT_SETTINGS, type RGB, type RGBAImage, type Settings } from '../src/core/types';
+
+const WHITE: RGB = [255, 255, 255];
+const RED: RGB = [220, 30, 40];
+const GREEN: RGB = [136, 199, 5];
+const DARK_GREEN: RGB = [0, 80, 35];
+const INK: RGB = [20, 15, 10];
+
+function fill(size: number, rgb: RGB): RGBAImage {
+  const data = new Uint8ClampedArray(size * size * 4);
+  for (let i = 0; i < size * size; i++) data.set([...rgb, 255], i * 4);
+  return { width: size, height: size, data };
+}
+
+function rect(img: RGBAImage, x0: number, y0: number, x1: number, y1: number, rgb: RGB): void {
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) img.data.set(rgb, (y * img.width + x) * 4);
+}
+
+/** Distance from (px,py) to the segment a-b. */
+function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+}
+
+const LINE = { ax: 40, ay: 60, bx: 160, by: 140, width: 2 };
+
+/** Anti-aliased ink line of LINE.width px (coverage blend), like a scanned/JPEG clipart stroke. */
+function drawLine(img: RGBAImage): void {
+  const half = LINE.width / 2;
+  for (let y = 0; y < img.height; y++)
+    for (let x = 0; x < img.width; x++) {
+      const cov = Math.max(0, Math.min(1, half + 0.5 - segDist(x + 0.5, y + 0.5, LINE.ax, LINE.ay, LINE.bx, LINE.by)));
+      if (cov <= 0) continue;
+      const o = (y * img.width + x) * 4;
+      for (let c = 0; c < 3; c++) img.data[o + c] = img.data[o + c] * (1 - cov) + INK[c] * cov;
+    }
+}
+
+/** Pixel centres on the line's core (distance < 0.5 px), away from its ends. */
+function lineCore(size: number): number[] {
+  const out: number[] = [];
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const d = segDist(x + 0.5, y + 0.5, LINE.ax + 6, LINE.ay + 4, LINE.bx - 6, LINE.by - 4);
+      if (d < 0.5) out.push(y * size + x);
+    }
+  return out;
+}
+
+/** White page, green panel 20..180 with an 8 px ink frame (so an ink cluster exists), thin line inside. */
+function panelWithLine(): RGBAImage {
+  const img = fill(200, WHITE);
+  rect(img, 12, 12, 188, 188, INK);
+  rect(img, 20, 20, 180, 180, GREEN);
+  drawLine(img);
+  return img;
+}
+
+const settings: Settings = { ...DEFAULT_SETTINGS, colorCount: 3, targetWidthCm: 2 };
+
+describe('outlineMask', () => {
+  it('covers a thin anti-aliased line completely without fattening it much', () => {
+    const img = fill(200, GREEN);
+    drawLine(img);
+    const m = outlineMask(img, { radiusPx: 6, minAreaPx: 100 });
+    const core = lineCore(200);
+    expect(core.length).toBeGreaterThan(100);
+    expect(core.filter((i) => m[i]).length).toBe(core.length);
+    // Nothing farther than 3 px from the stroke.
+    for (let y = 0; y < 200; y++)
+      for (let x = 0; x < 200; x++)
+        if (segDist(x + 0.5, y + 0.5, LINE.ax, LINE.ay, LINE.bx, LINE.by) > 3) expect(m[y * 200 + x]).toBe(0);
+  });
+
+  it('drops isolated dark specks below the minimum area, keeps larger ink', () => {
+    const img = fill(100, GREEN);
+    rect(img, 20, 20, 23, 23, INK); // 9 px speck
+    rect(img, 60, 60, 72, 72, INK); // 144 px
+    const m = outlineMask(img, { radiusPx: 6, minAreaPx: 50 });
+    expect(m[21 * 100 + 21]).toBe(0);
+    expect(m[66 * 100 + 66]).toBe(1);
+  });
+
+  it('does not mark a wide dark-green fill', () => {
+    const img = fill(200, GREEN);
+    rect(img, 50, 50, 150, 150, DARK_GREEN);
+    const m = outlineMask(img, { radiusPx: 6, minAreaPx: 100 });
+    let n = 0;
+    for (const v of m) n += v;
+    expect(n).toBe(0);
+  });
+});
+
+describe('analyze with outlinesBlack', () => {
+  it('keeps a thin anti-aliased line on green completely on the black layer', () => {
+    const a = analyze(panelWithLine(), settings);
+    const black = a.palette.find((p) => p.monoInclude)!;
+    expect(black.name).toBe('schwarz');
+    const core = lineCore(200);
+    expect(core.filter((i) => a.labels[i] === black.id).length).toBe(core.length);
+  });
+
+  it('loses the line without the setting (documents the original problem)', () => {
+    const a = analyze(panelWithLine(), { ...settings, outlinesBlack: false });
+    const black = a.palette.find((p) => p.monoInclude)!;
+    const core = lineCore(200);
+    expect(core.filter((i) => a.labels[i] === black.id).length).toBeLessThan(core.length * 0.5);
+  });
+
+  // A red patch keeps autoLevels from stretching the green to black in these two-colour scenes.
+  it('creates a black entry when no cluster is dark enough', () => {
+    const img = fill(200, WHITE);
+    rect(img, 20, 20, 180, 180, GREEN);
+    rect(img, 150, 30, 175, 55, RED);
+    drawLine(img);
+    const a = analyze(img, settings);
+    const black = a.palette.find((p) => p.monoInclude)!;
+    expect(black.name).toBe('schwarz');
+    expect(black.rgb).toEqual([0, 0, 0]); // the added entry, not an ink cluster
+    expect(black.deleted).toBe(false);
+    const core = lineCore(200);
+    expect(core.filter((i) => a.labels[i] === black.id).length).toBe(core.length);
+    // Green stays a colour of its own.
+    expect(a.palette.some((p) => p.name === 'hellgrün' || p.name === 'grün')).toBe(true);
+    expect(a.palette.filter((p) => p.name === 'schwarz')).toHaveLength(1);
+  });
+
+  it('does not create a black entry for an image without dark lines', () => {
+    const img = fill(200, WHITE);
+    rect(img, 20, 20, 180, 180, GREEN);
+    rect(img, 150, 30, 175, 55, RED);
+    const a = analyze(img, settings);
+    expect(a.palette.map((p) => p.name)).not.toContain('schwarz');
+  });
+
+  it('splits the grey anti-aliasing halo of a soft line between black and white', () => {
+    // White page, a mid-grey patch (so a grey cluster exists) and a soft 4 px ink line whose
+    // edges fade over 3 px: without the halo step its edges become a grey ring.
+    const img = fill(200, WHITE);
+    rect(img, 150, 10, 190, 50, [150, 150, 150]);
+    for (let y = 0; y < 200; y++)
+      for (let x = 0; x < 200; x++) {
+        const d = segDist(x + 0.5, y + 0.5, LINE.ax, LINE.ay, LINE.bx, LINE.by);
+        const cov = Math.max(0, Math.min(1, (3.5 - d) / 3));
+        if (cov <= 0) continue;
+        const o = (y * 200 + x) * 4;
+        for (let c = 0; c < 3; c++) img.data[o + c] = img.data[o + c] * (1 - cov) + INK[c] * cov;
+      }
+    const a = analyze(img, settings);
+    const grey = a.palette.find((p) => p.name === 'grau');
+    expect(grey).toBeDefined(); // the patch keeps its own layer
+    let band = 0;
+    let greyInBand = 0;
+    for (let y = 0; y < 200; y++)
+      for (let x = 0; x < 200; x++) {
+        const d = segDist(x + 0.5, y + 0.5, LINE.ax + 6, LINE.ay + 4, LINE.bx - 6, LINE.by - 4);
+        if (d > 5) continue;
+        band++;
+        if (a.labels[y * 200 + x] === grey!.id) greyInBand++;
+      }
+    expect(greyInBand / band).toBeLessThan(0.02);
+  });
+
+  it('leaves a dark-green fill crossed by an ink line dark green', () => {
+    const img = panelWithLine();
+    rect(img, 60, 60, 140, 140, DARK_GREEN);
+    drawLine(img);
+    const a = analyze(img, { ...settings, colorCount: 4 });
+    const black = a.palette.find((p) => p.monoInclude)!;
+    const dg = a.palette.find((p) => p.name === 'dunkelgrün')!;
+    expect(dg).toBeDefined();
+    expect(dg.id).not.toBe(black.id);
+    // Pixels of the square farther than 4 px from the line keep the dark-green label.
+    let total = 0;
+    let kept = 0;
+    for (let y = 62; y < 138; y++)
+      for (let x = 62; x < 138; x++) {
+        if (segDist(x + 0.5, y + 0.5, LINE.ax, LINE.ay, LINE.bx, LINE.by) <= 4) continue;
+        total++;
+        if (a.labels[y * 200 + x] === dg.id) kept++;
+      }
+    expect(kept / total).toBeGreaterThan(0.97);
+  });
+});
+
+describe('squareFilter', () => {
+  it('matches a brute-force clipped window max/min', () => {
+    let seed = 7;
+    const rnd = () => Math.floor(((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648) * 256);
+    for (const [w, h, r] of [[17, 11, 2], [5, 9, 3], [30, 4, 1], [3, 3, 4], [23, 19, 5]]) {
+      const a = Uint8Array.from({ length: w * h }, rnd);
+      for (const max of [true, false]) {
+        const got = squareFilter(a, w, h, r, max);
+        for (let y = 0; y < h; y++)
+          for (let x = 0; x < w; x++) {
+            let e = max ? -Infinity : Infinity;
+            for (let yy = Math.max(0, y - r); yy <= Math.min(h - 1, y + r); yy++)
+              for (let xx = Math.max(0, x - r); xx <= Math.min(w - 1, x + r); xx++)
+                e = max ? Math.max(e, a[yy * w + xx]) : Math.min(e, a[yy * w + xx]);
+            expect(got[y * w + x]).toBe(e);
+          }
+      }
+    }
+  });
+});
+
+describe('lightnessChroma', () => {
+  it('agrees with rgbToLab', () => {
+    const cols: RGB[] = [[0, 0, 0], [255, 255, 255], [136, 199, 5], [216, 33, 30], [20, 15, 10], [128, 128, 128]];
+    const data = new Uint8ClampedArray(cols.length * 4);
+    cols.forEach((c, i) => data.set([...c, 255], i * 4));
+    const { L, C } = lightnessChroma({ width: cols.length, height: 1, data });
+    cols.forEach((c, i) => {
+      const [l, a, b] = rgbToLab(c);
+      expect(Math.abs(L[i] - l)).toBeLessThan(0.1);
+      expect(Math.abs(C[i] - Math.hypot(a, b))).toBeLessThan(0.1);
+    });
+  });
+});

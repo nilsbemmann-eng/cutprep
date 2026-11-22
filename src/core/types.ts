@@ -17,6 +17,16 @@ export interface Settings {
   stackOnDarkest: boolean;
   /** Outline gaps up to about twice this width still enclose background-coloured areas. */
   gapCloseMm: number;
+  /**
+   * Dark line art (outlines, even thin anti-aliased ones) always goes to the black layer,
+   * protected from smoothing and speck removal; see core/outline.ts.
+   */
+  outlinesBlack: boolean;
+  /**
+   * Longest gap (mm, between the line edges) in black line art that is bridged along the line
+   * direction when outlinesBlack is on; 0 = off. Independent of gapCloseMm.
+   */
+  bridgeGapMm: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -28,6 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'multi',
   stackOnDarkest: false,
   gapCloseMm: 1,
+  outlinesBlack: true,
+  bridgeGapMm: 2,
 };
 
 export interface PaletteEntry {
@@ -41,6 +53,11 @@ export interface PaletteEntry {
   deleted: boolean;
   mergedInto: number | null;
   monoInclude: boolean;
+  /**
+   * monoInclude as the analysis set it. A carry-over keeps the user's monoInclude only where
+   * it differs from this, so the default cut colour can move (e.g. when toggling outlinesBlack).
+   */
+  monoDefault?: boolean;
   pixelCount: number;
   /**
    * 'background': the detected background cluster (outside the motif).

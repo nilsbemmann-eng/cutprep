@@ -5,7 +5,7 @@ import type { PaletteEntry } from './types';
 export const CARRY_MAX_DELTA_E = 15;
 
 /**
- * Re-applies the user's palette edits (deleted, mergedInto, monoInclude and a
+ * Re-applies the user's palette edits (deleted, mergedInto, a changed monoInclude and a
  * recolour) after a re-analysis of the same image. Old and new entries are
  * paired one-to-one by nearest Lab distance of their ORIGINAL cluster colours
  * (`originalRgb`), closest pairs first, up to `maxDeltaE`; only entries with the same
@@ -51,7 +51,9 @@ export function carryOverPaletteEdits(
     if (o === undefined) return out;
     const old = oldEntries[o];
     out.deleted = old.deleted;
-    out.monoInclude = old.monoInclude;
+    // Only a cut flag the user changed is carried; otherwise the new default applies (the
+    // default cut colour differs with and without outlinesBlack).
+    if (old.monoDefault === undefined || old.monoInclude !== old.monoDefault) out.monoInclude = old.monoInclude;
     out.mergedInto = old.mergedInto === null ? null : (newIdOfOldId.get(old.mergedInto) ?? null);
     if (out.mergedInto === out.id) out.mergedInto = null;
     const recoloured = old.rgb.some((c, i) => c !== old.originalRgb[i]);

@@ -26,6 +26,7 @@ describe('color', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       colorCount: 6, targetWidthCm: 20, minPartAreaMm2: 1,
       smoothing: 0.5, overlapMm: 0.4, mode: 'multi', stackOnDarkest: false, gapCloseMm: 1,
+      outlinesBlack: true, bridgeGapMm: 2,
     });
   });
 });
