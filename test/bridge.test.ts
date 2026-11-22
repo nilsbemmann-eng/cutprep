@@ -137,4 +137,38 @@ describe('bridgeGaps', () => {
     bridgeGaps(m, W, H, opts);
     expect(components(m)).toBe(2);
   });
+
+  it('stops searching when the work budget is used up and stays deterministic', () => {
+    const draw = (x: number, y: number) =>
+      seg(10, 30, 50, 30, 3)(x, y) || seg(58, 30, 110, 30, 3)(x, y) ||
+      seg(10, 80, 50, 80, 3)(x, y) || seg(58, 80, 110, 80, 3)(x, y);
+    const stats = (): NonNullable<Parameters<typeof bridgeGaps>[3]['stats']> => ({
+      ends: 0, noTarget: 0, foreign: 0, bridged: 0, budgetExhausted: false,
+    });
+    const full = mask(draw);
+    const fullStats = stats();
+    const nFull = bridgeGaps(full, W, H, { ...opts, stats: fullStats });
+    expect(fullStats.budgetExhausted).toBe(false);
+
+    const none = mask(draw);
+    const before = none.slice();
+    const noneStats = stats();
+    expect(bridgeGaps(none, W, H, { ...opts, maxWork: 0, stats: noneStats })).toBe(0);
+    expect(none).toEqual(before);
+    expect(noneStats.budgetExhausted).toBe(true);
+
+    const run = () => {
+      const m = mask(draw);
+      const st = stats();
+      const n = bridgeGaps(m, W, H, { ...opts, maxWork: Math.floor(fullStats.work! * 0.6), stats: st });
+      return { m, n, st };
+    };
+    const a = run();
+    const b = run();
+    expect(a.st.budgetExhausted).toBe(true);
+    expect(a.n).toBeGreaterThan(0); // bridges found before the budget ran out are kept
+    expect(a.n).toBeLessThan(nFull);
+    expect(a.m).toEqual(b.m);
+    expect(a.n).toBe(b.n);
+  });
 });

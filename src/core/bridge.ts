@@ -21,7 +21,9 @@
  *
  * All bridges are decided on the original mask and then added together, so bridges never
  * chain. Work is proportional to the mask pixels (thinning) and the number of ends times
- * the search window.
+ * the search window; a deterministic budget (visited pixels, no clock) caps the searches so
+ * a scribble with thousands of ends and a long gap cannot stall: once it is used up no
+ * further ends are examined, bridges already found are kept.
  */
 
 /** Cone half-angle around the line direction in which a target may lie. */
@@ -31,6 +33,8 @@ const COS_CONE = Math.cos((CONE_DEG * Math.PI) / 180);
 const MAX_FOREIGN = 0.25;
 /** A target on the same line must be this many times farther along the skeleton than straight. */
 const DETOUR = 2.5;
+/** Default work budget per image pixel: skeleton-walk steps + BFS pixels + search-window pixels. */
+const WORK_PER_PIXEL = 32;
 
 export interface BridgeOptions {
   /** Longest gap (between the line edges) that is bridged, px. */
@@ -40,7 +44,12 @@ export interface BridgeOptions {
   /** Whether a bridge may cross pixel i; a bridge mostly over other pixels is dropped. Default: all. */
   allowed?: (i: number) => boolean;
   /** Filled with counts for diagnostics (line ends looked at, bridged, rejected by `allowed`). */
-  stats?: { ends: number; noTarget: number; foreign: number; bridged: number };
+  stats?: { ends: number; noTarget: number; foreign: number; bridged: number; budgetExhausted?: boolean; work?: number };
+  /**
+   * Work budget (visited pixels over all end searches). Default `WORK_PER_PIXEL * w * h`.
+   * When exhausted, `stats.budgetExhausted` is set and no further bridges are searched.
+   */
+  maxWork?: number;
 }
 
 export interface Skeleton {
@@ -183,11 +192,18 @@ export function bridgeGaps(mask: Uint8Array, w: number, h: number, opts: BridgeO
   const own = new Map<number, number>();
   const bfs: number[] = [];
   let bridges = 0;
+  const maxWork = opts.maxWork ?? WORK_PER_PIXEL * w * h;
+  let work = 0;
+  if (opts.stats) opts.stats.budgetExhausted = false;
 
   for (let e = w + 1; e < w * h - w - 1; e++) {
     if (!skel[e] || !isEnd(skel, e, nb8)) continue;
     const ex = e % w;
     if (ex === 0 || ex === w - 1) continue;
+    if (work >= maxWork) {
+      if (opts.stats) opts.stats.budgetExhausted = true;
+      break;
+    }
     const ey = (e - ex) / w;
 
     // Walk back along the line for its direction and width.
@@ -220,6 +236,7 @@ export function bridgeGaps(mask: Uint8Array, w: number, h: number, opts: BridgeO
       const hwHere = halfWidth(peel, cur, nb8);
       if (hwHere > hw) hw = hwHere;
     }
+    work += walked + 1;
     if (walked < 3) continue; // a dot, not a line
     if (junction && walked < 2 * hw + 3) continue; // a spur of a ragged edge
     if (hw > maxHw) continue;
@@ -253,6 +270,7 @@ export function bridgeGaps(mask: Uint8Array, w: number, h: number, opts: BridgeO
 
     // Best target ahead.
     const R = Math.ceil(reach);
+    work += bfs.length + (Math.min(w - 2, ex + R) - Math.max(1, ex - R) + 1) * (Math.min(h - 2, ey + R) - Math.max(1, ey - R) + 1);
     const reach2 = reach * reach;
     let best = -1;
     let bestScore = Infinity;
@@ -322,6 +340,7 @@ export function bridgeGaps(mask: Uint8Array, w: number, h: number, opts: BridgeO
     bridges++;
     if (opts.stats) opts.stats.bridged++;
   }
+  if (opts.stats) opts.stats.work = work;
   for (let i = 0; i < add.length; i++) if (add[i]) mask[i] = 1;
   return bridges;
 }
