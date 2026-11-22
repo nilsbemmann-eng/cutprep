@@ -4,7 +4,7 @@ Offline-fähige PWA (Vite + TypeScript), die Rasterbilder in Cricut-taugliche, e
 
 **Datenschutz:** Die Verarbeitung läuft komplett im Browser. Deine Bilder verlassen das Gerät nie.
 
-Live: https://<github-account>.github.io/cutprep/
+Live: https://nilsbemmann-eng.github.io/cutprep/
 
 ## Installation
 
