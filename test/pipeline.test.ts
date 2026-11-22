@@ -229,7 +229,7 @@ describe('render abort', () => {
     };
     const run = render(a, a.palette, settings, counting, () => calls >= 1);
     await expect(run).rejects.toBeInstanceOf(RenderAbortedError);
-    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(run).rejects.toMatchObject({ name: 'RenderAbortedError' });
     expect(calls).toBe(1);
   });
 

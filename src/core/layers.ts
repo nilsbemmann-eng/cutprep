@@ -90,34 +90,37 @@ export function buildLayerMasks(
   const byId = new Map<number, PaletteEntry>();
   for (const e of entries) byId.set(e.id, e);
 
-  // One mask per active target; unknown/deleted labels are skipped. The per-pixel loop
-  // uses a label -> mask table (Map lookups per pixel cost ~half of the mask stage).
+  // One mask per active target that actually gets pixels; unknown/deleted labels are
+  // skipped. The per-pixel loop uses label -> target tables (Map lookups per pixel cost
+  // about half of the mask stage).
   let maxId = -1;
   for (const e of entries) if (e.id > maxId) maxId = e.id;
-  const maskOfLabel: (Uint8Array | undefined)[] = new Array(maxId + 1);
+  const targetOfLabel = new Int32Array(maxId + 1).fill(-1);
+  for (const [id, t] of resolved) if (t !== null && id >= 0) targetOfLabel[id] = t;
+  const maskOfTarget: (Uint8Array | undefined)[] = new Array(maxId + 1);
   const targetMasks = new Map<number, Uint8Array>();
-  for (const [id, t] of resolved) {
-    if (t === null || id < 0) continue;
-    let m = targetMasks.get(t);
-    if (!m) {
-      m = new Uint8Array(w * h);
-      targetMasks.set(t, m);
-    }
-    maskOfLabel[id] = m;
-  }
   const union = new Uint8Array(w * h);
   for (let i = 0; i < labels.length; i++) {
     const l = labels[i];
     if (l < 0 || l > maxId) continue;
-    const m = maskOfLabel[l];
-    if (m === undefined) continue;
+    const t = targetOfLabel[l];
+    if (t < 0) continue;
+    let m = maskOfTarget[t];
+    if (m === undefined) {
+      m = new Uint8Array(w * h);
+      maskOfTarget[t] = m;
+      targetMasks.set(t, m);
+    }
     m[i] = 1;
     union[i] = 1;
   }
 
-  const layers = [...targetMasks.entries()]
-    .map(([id, mask]) => ({ id, mask, area: countOnes(mask), entry: byId.get(id)! }))
-    .filter((l) => l.area > 0);
+  const layers = [...targetMasks.entries()].map(([id, mask]) => ({
+    id,
+    mask,
+    area: countOnes(mask),
+    entry: byId.get(id)!,
+  }));
   const byAreaDesc = (a: { id: number; area: number }, b: { id: number; area: number }) =>
     b.area - a.area || a.id - b.id;
 

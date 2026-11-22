@@ -144,7 +144,7 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
 export class RenderAbortedError extends Error {
   constructor() {
     super('Vorschau abgebrochen');
-    this.name = 'AbortError';
+    this.name = 'RenderAbortedError';
   }
 }
 
