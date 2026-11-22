@@ -24,6 +24,10 @@ Rastergrafiken (Cliparts, JPG/PNG/WebP) in schneidfertige SVGs für den
 - Palette: Farben zusammenlegen, umfärben, löschen (z. B. Hintergrund)
 - Hintergrundfarbe **innerhalb** des Motivs (z. B. weißes Fell) bleibt als eigene Farbe „… (im Motiv)“ erhalten;
   Regler **„Konturlücken schließen (mm)“** (Default 1,0 mm) bestimmt, wie weit die Kontur offen sein darf.
+- Schalter **„Konturen komplett in Schwarz“** (Default an): die dunkle Linienzeichnung (auch dünne,
+  kantengeglättete Linien) landet vollständig und durchgehend auf der schwarzen Ebene, statt in
+  Grün/Rot/Grau zu zerfallen oder von Glättung und Krümelentfernung zerlegt zu werden. Gibt es keine
+  schwarze Farbe, wird eine Ebene „schwarz“ angelegt. Farbflächen bleiben farbig (kein Silhouetten-Modus).
 - Mindestgröße für Teile (mm²) – Krümel, die man nicht entgittern kann, fallen weg
 - Glättung / Detailtreue
 - Zielbreite in cm (Default 20 cm; Joy Xtra max. ~21,6 cm Materialbreite)

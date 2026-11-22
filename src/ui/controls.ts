@@ -30,6 +30,9 @@ export function setupControls(root: HTMLElement, onChange: () => void): Controls
           <option value="mono">Einfarbig</option>
         </select></label>
       <label class="check"><input type="checkbox" id="stackOnDarkest" /> Schwarz als Basis-Ebene</label>
+      <label class="check"><input type="checkbox" id="outlinesBlack" ${d.outlinesBlack ? 'checked' : ''}
+          aria-describedby="outlinesBlack-hint" /> Konturen komplett in Schwarz
+        <small id="outlinesBlack-hint">Dunkle Linien – auch dünne – landen vollständig auf der schwarzen Ebene, statt in Grün, Rot oder Grau zu zerfallen.</small></label>
     </div>`;
   const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>('#' + id)!;
   const num = (id: string, fallback: number) => {
@@ -47,6 +50,7 @@ export function setupControls(root: HTMLElement, onChange: () => void): Controls
     mode: $<HTMLSelectElement>('mode').value === 'mono' ? 'mono' : 'multi',
     stackOnDarkest: $<HTMLInputElement>('stackOnDarkest').checked,
     gapCloseMm: clamp(num('gapCloseMm', d.gapCloseMm), 0, 3),
+    outlinesBlack: $<HTMLInputElement>('outlinesBlack').checked,
   });
 
   root.addEventListener('input', () => {
