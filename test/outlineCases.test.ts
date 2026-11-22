@@ -219,4 +219,21 @@ describe('outline review cases', () => {
     const carried = carryOverPaletteEdits(edited, on.palette);
     expect(carried.find((e) => e.name === 'hellgrün')!.monoInclude).toBe(true);
   });
+
+  it('M: bridgeGapMm alone decides whether a line gap is bridged', () => {
+    // Two collinear 3 px (0.3 mm) strokes with a 16 px (1.6 mm) gap between them.
+    const img = render(WHITE, [
+      { shape: line(60, 200, 190, 200, 3), rgb: INK },
+      { shape: line(206, 200, 340, 200, 3), rgb: INK },
+    ]);
+    const gap = rect(194, 199, 202, 202);
+    const at = (s: Settings) => onCut(analyze(img, s), gap);
+    expect(at({ ...base, bridgeGapMm: 0 })).toBeLessThan(0.1);
+    expect(at({ ...base, bridgeGapMm: 2 })).toBeGreaterThan(0.9);
+    // Too short for this gap: stays open.
+    expect(at({ ...base, bridgeGapMm: 1 })).toBeLessThan(0.1);
+    // gapCloseMm only drives the interior split, not the bridges.
+    expect(at({ ...base, bridgeGapMm: 2, gapCloseMm: 0 })).toBeGreaterThan(0.9);
+    expect(at({ ...base, bridgeGapMm: 0, gapCloseMm: 3 })).toBeLessThan(0.1);
+  });
 });

@@ -53,13 +53,13 @@ describe('real fixture outlines (grinch, defaults)', () => {
       if (!nearRef[i]) far++;
       if (L[i] >= 60) light++;
     }
-    // Calibration 2026-11-22: recall 93.5 % (66.8 % before the outline step); 26.8 % of the
+    // Round 1 (superseded by the figures below, which the thresholds follow): recall 93.5 % (66.8 % before the outline step); 26.8 % of the
     // layer lies outside the reference, almost all anti-aliasing fringe and faint strokes
     // with L* 40-60; 5.8 % is farther than 3 px from any reference pixel (faint strokes on
     // the white fur and hand), 3.3 % is light (L* >= 60). A flooded colour area would push
     // the last two up at once.
-    // Round 2 (gap closing): faint stroke parts up to L* 70 that hang on a line (hysteresis)
-    // and bridges across white gaps are added on purpose; both lie away from the L* < 40
+    // Round 2 (current, default bridgeGapMm 2.0): faint stroke parts up to L* 70 that hang on a
+    // line (hysteresis) and bridges across white gaps are added on purpose; both lie away from the L* < 40
     // reference by definition. Measured: recall 93.8 %, outside 29.7 %, farther than 3 px
     // 9.4 %, light 6.0 %, black layer 10.0 % of the image (9.6 % before).
     expect(hit / refN).toBeGreaterThanOrEqual(0.9);

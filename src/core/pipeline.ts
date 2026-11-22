@@ -68,7 +68,8 @@ export function needsReanalysis(prev: Settings, next: Settings): boolean {
     prev.minPartAreaMm2 !== next.minPartAreaMm2 ||
     prev.targetWidthCm !== next.targetWidthCm ||
     prev.gapCloseMm !== next.gapCloseMm ||
-    prev.outlinesBlack !== next.outlinesBlack
+    prev.outlinesBlack !== next.outlinesBlack ||
+    prev.bridgeGapMm !== next.bridgeGapMm
   );
 }
 
@@ -115,9 +116,9 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
   const addedBlackId = colors.length + 1;
   let outlineLabel: number | null = null;
   if (lc) {
-    // Bridged gaps match what the interior split closes (gaps up to 2 · gapCloseMm).
+    // Line gaps up to bridgeGapMm are bridged; gapCloseMm only steers the interior split below.
     const res = forceOutlines(labels, width, height, lc, fitExclude, colors, bg, addedBlackId, pxPerMm,
-      minAreaPx, 2 * settings.gapCloseMm * pxPerMm, timer);
+      minAreaPx, settings.bridgeGapMm * pxPerMm, timer);
     labels = res.labels;
     outlineLabel = res.target;
     timer?.lap('outlines:paint');
