@@ -45,6 +45,10 @@ describe('pipeline', () => {
     expect(mono).toHaveLength(1);
     expect(mono[0].rgb.every((c) => c < 30)).toBe(true);
     expect(a.palette.reduce((s, p) => s + p.pixelCount, 0)).toBe(200 * 200);
+    for (const p of a.palette) {
+      expect(p.originalRgb).toEqual(p.rgb);
+      expect(p.originalRgb).not.toBe(p.rgb);
+    }
   });
 
   it('renders a valid SVG with 2 groups and per-layer SVGs', async () => {

@@ -30,7 +30,10 @@ export const DEFAULT_SETTINGS: Settings = {
 export interface PaletteEntry {
   /** Equals the k-means label index this entry represents. */
   id: number;
+  /** Colour to cut; changed by the user's colour picker. */
   rgb: RGB;
+  /** Cluster colour as analysed (never edited); used to carry edits over a re-analysis. */
+  originalRgb: RGB;
   name: string;
   deleted: boolean;
   mergedInto: number | null;

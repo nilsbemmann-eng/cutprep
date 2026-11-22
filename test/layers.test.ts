@@ -6,6 +6,7 @@ function entry(id: number, rgb: RGB, over: Partial<PaletteEntry> = {}): PaletteE
   return {
     id,
     rgb,
+    originalRgb: rgb,
     name: `f${id}`,
     deleted: false,
     mergedInto: null,

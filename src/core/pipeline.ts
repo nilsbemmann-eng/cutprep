@@ -80,6 +80,7 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
     .map((rgb, id) => ({
       id,
       rgb,
+      originalRgb: [...rgb] as RGB,
       name: germanColorName(rgb),
       deleted: id === bg,
       mergedInto: null,
