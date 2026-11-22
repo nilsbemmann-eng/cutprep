@@ -22,6 +22,8 @@ Rastergrafiken (Cliparts, JPG/PNG/WebP) in schneidfertige SVGs für den
 ## Bedienung (automatisch + Feinschliff, Live-Vorschau)
 - Farbanzahl 2–8 (Regler)
 - Palette: Farben zusammenlegen, umfärben, löschen (z. B. Hintergrund)
+- Hintergrundfarbe **innerhalb** des Motivs (z. B. weißes Fell) bleibt als eigene Farbe „… (im Motiv)“ erhalten;
+  Regler **„Konturlücken schließen (mm)“** (Default 1,0 mm) bestimmt, wie weit die Kontur offen sein darf.
 - Mindestgröße für Teile (mm²) – Krümel, die man nicht entgittern kann, fallen weg
 - Glättung / Detailtreue
 - Zielbreite in cm (Default 20 cm; Joy Xtra max. ~21,6 cm Materialbreite)
