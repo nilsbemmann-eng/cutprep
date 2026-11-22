@@ -47,6 +47,11 @@ export interface PaletteEntry {
   deleted: boolean;
   mergedInto: number | null;
   monoInclude: boolean;
+  /**
+   * monoInclude as the analysis set it. A carry-over keeps the user's monoInclude only where
+   * it differs from this, so the default cut colour can move (e.g. when toggling outlinesBlack).
+   */
+  monoDefault?: boolean;
   pixelCount: number;
   /**
    * 'background': the detected background cluster (outside the motif).

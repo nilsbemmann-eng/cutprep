@@ -116,4 +116,24 @@ describe('carryOverPaletteEdits', () => {
     expect(out[0].deleted).toBe(false); // background keeps its own edit
     expect(out[1].mergedInto).toBeNull(); // merge into the vanished interior is reset
   });
+
+  it('carries monoInclude only where the user changed it from the analysis default', () => {
+    // Old analysis cut red by default; the new one cuts an added black instead.
+    const old = [
+      entry(0, RED, 'rot', { monoInclude: true, monoDefault: true }),
+      entry(1, GREEN, 'grün', { monoInclude: true, monoDefault: false }), // ticked by the user
+      entry(2, BLUE, 'blau', { monoInclude: false, monoDefault: false }),
+    ];
+    const fresh = [
+      entry(0, RED, 'rot', { monoInclude: false, monoDefault: false }),
+      entry(1, GREEN, 'grün', { monoInclude: false, monoDefault: false }),
+      entry(2, BLUE, 'blau', { monoInclude: false, monoDefault: false }),
+      entry(4, BLACK, 'schwarz', { monoInclude: true, monoDefault: true }),
+    ];
+    const out = carryOverPaletteEdits(old, fresh);
+    expect(out.map((e) => e.monoInclude)).toEqual([false, true, false, true]);
+    // Entries without a recorded default (older state) keep carrying the flag as before.
+    const legacy = carryOverPaletteEdits([entry(0, RED, 'rot', { monoInclude: true })], [fresh[0]]);
+    expect(legacy[0].monoInclude).toBe(true);
+  });
 });
