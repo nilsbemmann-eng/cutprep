@@ -76,7 +76,7 @@ export function germanColorName(rgb: RGB): string {
 
 /** '#rrggbb' */
 export function toHex(rgb: RGB): string {
-  return '#' + rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('');
+  return '#' + rgb.map((c) => Math.round(Math.min(255, Math.max(0, c))).toString(16).padStart(2, '0')).join('');
 }
 
 function linearToSrgb(v: number): number {
