@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { kmeansLab, detectBackground } from '../src/core/quantize';
+import { edgeMask } from '../src/core/preprocess';
 import { labToRgb, rgbToLab } from '../src/core/color';
 import type { RGBAImage, RGB } from '../src/core/types';
 
@@ -136,5 +137,60 @@ describe('detectBackground', () => {
 
   it('returns null when all border pixels are transparent', () => {
     expect(detectBackground(new Int16Array(16).fill(-1), 4, 4)).toBeNull();
+  });
+});
+
+describe('kmeansLab fitExclude', () => {
+  /**
+   * 120x60: vertical red/black stripes (8 px flat) joined by 3 px anti-aliasing
+   * ramps, plus a 12x12 grey patch. The ramps' blend pixels outnumber the grey.
+   */
+  function rampImage(): RGBAImage {
+    const w = 120, h = 60, flat = 8, ramp = 3, period = 2 * (flat + ramp);
+    const img = solid(w, h, [0, 0, 0]);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const p = x % period;
+        const t = // 0 = red, 1 = black
+          p < flat ? 0
+          : p < flat + ramp ? (p - flat + 1) / (ramp + 1)
+          : p < 2 * flat + ramp ? 1
+          : 1 - (p - 2 * flat - ramp + 1) / (ramp + 1);
+        const o = (y * w + x) * 4;
+        img.data[o] = Math.round(220 * (1 - t));
+        img.data[o + 1] = Math.round(20 * (1 - t));
+        img.data[o + 2] = Math.round(20 * (1 - t));
+      }
+    fillRect(img, 30, 30, 42, 42, [128, 128, 128]);
+    return img;
+  }
+  const near = (p: RGB[], c: RGB, maxDE: number) =>
+    p.some((q) => {
+      const a = rgbToLab(q), b = rgbToLab(c);
+      return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < maxDE;
+    });
+
+  it('without exclusion the ramp claims a blend colour instead of grey', () => {
+    const { palette } = kmeansLab(rampImage(), 3);
+    expect(near(palette, [128, 128, 128], 10)).toBe(false);
+  });
+
+  it('excluding edge pixels from the fit finds red, black and grey, and still labels every pixel', () => {
+    const img = rampImage();
+    const { palette, labels } = kmeansLab(img, 3, { fitExclude: edgeMask(img) });
+    expect(palette).toHaveLength(3);
+    expect(near(palette, [220, 20, 20], 10)).toBe(true);
+    expect(near(palette, [0, 0, 0], 10)).toBe(true);
+    expect(near(palette, [128, 128, 128], 10)).toBe(true);
+    expect(near(palette, [110, 10, 10], 15)).toBe(false);
+    expect(labels.every((l) => l >= 0)).toBe(true);
+  });
+
+  it('falls back to fitting on all pixels when the exclusion leaves fewer than k*10', () => {
+    const img = solid(10, 10, [255, 0, 0]);
+    fillRect(img, 5, 0, 10, 10, [0, 0, 255]);
+    const all = new Uint8Array(100).fill(1);
+    const { palette } = kmeansLab(img, 2, { fitExclude: all });
+    expect(palette).toHaveLength(2);
   });
 });

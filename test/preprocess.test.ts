@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { workingSize, resizeBilinear, flattenAlpha, autoLevels } from '../src/core/preprocess';
+import { workingSize, resizeBilinear, flattenAlpha, autoLevels, edgeMask } from '../src/core/preprocess';
 import type { RGBAImage } from '../src/core/types';
 
 function img(width: number, height: number, px: number[]): RGBAImage {
@@ -74,5 +74,36 @@ describe('autoLevels', () => {
   it('leaves flat channels unchanged', () => {
     const out = autoLevels(img(2, 1, [80, 80, 80, 255, 80, 80, 80, 255]));
     expect(Array.from(out.data)).toEqual([80, 80, 80, 255, 80, 80, 80, 255]);
+  });
+});
+
+describe('edgeMask', () => {
+  /** 40x10: red left, 8 px linear red->black ramp at x=16..23, black right. */
+  function ramp(): RGBAImage {
+    const w = 40, h = 10;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const t = Math.min(1, Math.max(0, (x - 15) / 9));
+        data.set([Math.round(220 * (1 - t)), 20 * (1 - t), 20 * (1 - t), 255], (y * w + x) * 4);
+      }
+    return { width: w, height: h, data };
+  }
+
+  it('flags the soft border but not the flat areas', () => {
+    const m = edgeMask(ramp());
+    const at = (x: number, y: number) => m[y * 40 + x];
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x <= 11; x++) expect(at(x, y)).toBe(0);
+      for (let x = 16; x <= 23; x++) expect(at(x, y)).toBe(1);
+      for (let x = 28; x < 40; x++) expect(at(x, y)).toBe(0);
+    }
+  });
+
+  it('respects distance and threshold', () => {
+    // A 1-step change of 30 per channel is below the default threshold 40.
+    const flat = img(5, 1, [0, 0, 0, 255, 0, 0, 0, 255, 30, 30, 30, 255, 30, 30, 30, 255, 30, 30, 30, 255]);
+    expect(Array.from(edgeMask(flat))).toEqual([0, 0, 0, 0, 0]);
+    expect(Array.from(edgeMask(flat, 1, 20))).toEqual([0, 1, 1, 0, 0]);
   });
 });

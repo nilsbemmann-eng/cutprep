@@ -98,3 +98,34 @@ export function autoLevels(img: RGBAImage, clipPercent = 0.5): RGBAImage {
   }
   return { width: img.width, height: img.height, data: out };
 }
+
+/**
+ * Marks anti-aliasing seams: 1 where any RGB channel differs by more than
+ * `threshold` from the pixel `distance` px to the left, right, above or below
+ * (neighbours clamped to the image). Used to keep blend pixels out of the
+ * k-means fit; on typical artwork this flags about 3 % of the pixels.
+ */
+export function edgeMask(img: RGBAImage, distance = 2, threshold = 40): Uint8Array {
+  const { width: w, height: h, data: d } = img;
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const up = Math.max(0, y - distance) * w;
+    const down = Math.min(h - 1, y + distance) * w;
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const nb = [y * w + Math.max(0, x - distance), y * w + Math.min(w - 1, x + distance), up + x, down + x];
+      let edge = 0;
+      for (let k = 0; k < 4 && !edge; k++) {
+        const j = nb[k];
+        for (let c = 0; c < 3; c++) {
+          if (Math.abs(d[i * 4 + c] - d[j * 4 + c]) > threshold) {
+            edge = 1;
+            break;
+          }
+        }
+      }
+      out[i] = edge;
+    }
+  }
+  return out;
+}

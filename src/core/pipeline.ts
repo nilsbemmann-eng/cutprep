@@ -1,7 +1,7 @@
 import { germanColorName, rgbToLab } from './color';
 import { majorityFilter, removeSmallRegions } from './labels';
 import { buildLayerMasks } from './layers';
-import { autoLevels, flattenAlpha, resizeBilinear, workingSize } from './preprocess';
+import { autoLevels, edgeMask, flattenAlpha, resizeBilinear, workingSize } from './preprocess';
 import { detectBackground, kmeansLab } from './quantize';
 import { buildSvg, layerIds, scalePathData } from './svg';
 import type { Tracer } from './trace';
@@ -62,7 +62,12 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
   const transparent = resizeMaskNearest(flat.transparent, src.width, src.height, width, height);
   const leveled = autoLevels(resized);
 
-  const { palette: colors, labels: raw } = kmeansLab(leveled, settings.colorCount, { transparent });
+  // Anti-aliasing seams would otherwise become clusters of their own and crowd
+  // out small real colours; they are only left out of the fit, not the labelling.
+  const { palette: colors, labels: raw } = kmeansLab(leveled, settings.colorCount, {
+    transparent,
+    fitExclude: edgeMask(leveled),
+  });
   let labels = majorityFilter(raw, width, height, Math.round(settings.smoothing * 3));
   labels = removeSmallRegions(labels, width, height, settings.minPartAreaMm2 * pxPerMm * pxPerMm);
 

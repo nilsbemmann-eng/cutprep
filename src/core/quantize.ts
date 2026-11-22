@@ -4,6 +4,11 @@ import { labToRgb } from './color';
 export interface KmeansOptions {
   /** Per-pixel flag (non-zero = transparent), length width*height. */
   transparent?: Uint8Array;
+  /**
+   * Per-pixel flag (non-zero = leave out of the centroid fit), e.g. edgeMask().
+   * Excluded pixels are still labelled. Ignored when fewer than k*10 pixels remain.
+   */
+  fitExclude?: Uint8Array;
   /** Maximum number of pixels used to fit the centroids. */
   sampleSize?: number;
   seed?: number;
@@ -77,7 +82,7 @@ function nearest(lab: Float32Array, o: number, cent: Float64Array, k: number): n
 
 /**
  * K-means in Lab space (k-means++ init, seeded). Fits on a random sample of
- * non-transparent pixels, then assigns every pixel. Label -1 = transparent.
+ * non-transparent, non-fit-excluded pixels, then assigns every opaque pixel. Label -1 = transparent.
  * Palette is sorted by pixel count descending; label i refers to palette[i].
  */
 export function kmeansLab(
@@ -93,10 +98,17 @@ export function kmeansLab(
   const lab = toLabBuffer(img.data, n);
   const labels = new Int16Array(n).fill(-1);
 
-  // Candidate (opaque) pixel indices
+  // Candidate (opaque, not fit-excluded) pixel indices
   const opaque = new Int32Array(n);
-  let m = 0;
-  for (let i = 0; i < n; i++) if (!transparent || !transparent[i]) opaque[m++] = i;
+  const collect = (exclude: Uint8Array | undefined): number => {
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+      if ((!transparent || !transparent[i]) && (!exclude || !exclude[i])) opaque[count++] = i;
+    }
+    return count;
+  };
+  let m = collect(opts.fitExclude);
+  if (opts.fitExclude && m < Math.floor(k) * 10) m = collect(undefined);
   if (m === 0) return { palette: [], labels };
 
   // Random sample via partial Fisher-Yates
