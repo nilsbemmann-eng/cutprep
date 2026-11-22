@@ -6,7 +6,8 @@ declare const self: ServiceWorkerGlobalScope;
 const SHARE_CACHE = 'cutprep-share';
 const SHARE_KEY = 'shared-image';
 
-precacheAndRoute(self.__WB_MANIFEST);
+// 'shared' is the share-target redirect param; ignoring it lets ./?shared=1 hit the precached index.html offline.
+precacheAndRoute(self.__WB_MANIFEST, { ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^shared$/] });
 
 self.addEventListener('install', () => void self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
