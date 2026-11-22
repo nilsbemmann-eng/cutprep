@@ -69,6 +69,8 @@ function sendAnalyze(newImage?: RGBAImage): void {
   // source stays, since the current palette may not belong to the latest analysis yet).
   carryFrom = newImage ? null : analyzing ? carryFrom : palette;
   analyzing = true;
+  // Invalidate any render still in flight: it belongs to the previous image/settings.
+  renderId++;
   preview.setBusy('Analysiere Bild…');
   const msg: WorkerRequest = { type: 'analyze', requestId: ++analyzeId, settings, image: newImage };
   worker.postMessage(msg, newImage ? [newImage.data.buffer] : []);
@@ -120,7 +122,8 @@ worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
     showPalette();
     sendRender();
   } else if (msg.type === 'rendered') {
-    if (msg.requestId !== renderId) return;
+    // Ignore renders while an analysis is pending; the analysis triggers a fresh one.
+    if (analyzing || msg.requestId !== renderId) return;
     current = msg.result;
     preview.setBusy(null);
     preview.setError(null);
