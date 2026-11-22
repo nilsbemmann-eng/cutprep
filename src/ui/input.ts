@@ -15,9 +15,27 @@ export async function loadImageFile(file: Blob): Promise<RGBAImage> {
   }
 }
 
-/** Hook for the Web Share Target (filled in Task 10). */
-export function consumeSharedImage(): Promise<Blob | null> {
-  return Promise.resolve(null);
+/**
+ * Web Share Target: the service worker stores the shared file in the cache 'cutprep-share'
+ * and redirects to ./?shared=1. Returns the file once (and removes it), else null.
+ */
+export async function consumeSharedImage(): Promise<Blob | null> {
+  const params = new URLSearchParams(location.search);
+  if (params.get('shared') !== '1') return null;
+  try {
+    const cache = await caches.open('cutprep-share');
+    const res = await cache.match('shared-image');
+    if (!res) return null;
+    const blob = await res.blob();
+    await cache.delete('shared-image');
+    return blob;
+  } catch {
+    return null;
+  } finally {
+    params.delete('shared');
+    const qs = params.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+  }
 }
 
 function firstImage(files: FileList | File[] | null | undefined): File | null {

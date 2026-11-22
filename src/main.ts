@@ -1,4 +1,5 @@
 import './style.css';
+import { registerSW } from 'virtual:pwa-register';
 import { needsReanalysis, type RenderResult } from './core/pipeline';
 import type { PaletteEntry, Settings } from './core/types';
 import type { WorkerRequest, WorkerResponse } from './workerProtocol';
@@ -130,6 +131,9 @@ setupInput(el('input'), (f) => void onFile(f));
 void consumeSharedImage().then((blob) => {
   if (blob) void onFile(blob);
 });
+
+// Offline support: production builds only (the dev server has no precache manifest).
+if (import.meta.env.PROD) registerSW({ immediate: true });
 
 // Dev-only hook for browser verification (tree-shaken from production builds).
 if (import.meta.env.DEV) {
