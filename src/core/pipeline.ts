@@ -70,15 +70,18 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
   for (let i = 0; i < labels.length; i++) if (labels[i] >= 0) counts[labels[i]]++;
 
   const bg = detectBackground(labels, width, height);
-  const palette: PaletteEntry[] = colors.map((rgb, id) => ({
-    id,
-    rgb,
-    name: germanColorName(rgb),
-    deleted: id === bg,
-    mergedInto: null,
-    monoInclude: false,
-    pixelCount: counts[id],
-  }));
+  // Clusters wiped out by cleanup are dropped; ids keep their label value.
+  const palette: PaletteEntry[] = colors
+    .map((rgb, id) => ({
+      id,
+      rgb,
+      name: germanColorName(rgb),
+      deleted: id === bg,
+      mergedInto: null,
+      monoInclude: false,
+      pixelCount: counts[id],
+    }))
+    .filter((e) => e.pixelCount > 0);
 
   let darkest: PaletteEntry | null = null;
   let darkestL = Infinity;

@@ -86,6 +86,29 @@ describe('pipeline', () => {
     expect(r.svg).toContain('M1.1 1.1L19 1.1');
   });
 
+  it('drops palette entries wiped out by cleanup', async () => {
+    const img = testImage();
+    // Remove the ring, add tiny black speckles (4 px, far below 1 mm2 = 100 px).
+    for (let y = 0; y < 200; y++)
+      for (let x = 0; x < 200; x++) {
+        const r = Math.hypot(x - 100, y - 100);
+        if (r >= 70 && r < 90) img.data.set([255, 255, 255, 255], (y * 200 + x) * 4);
+      }
+    for (const [sx, sy] of [[5, 5], [150, 20], [30, 160]])
+      for (let dy = 0; dy < 2; dy++)
+        for (let dx = 0; dx < 2; dx++) img.data.set([0, 0, 0, 255], ((sy + dy) * 200 + sx + dx) * 4);
+    const s = { ...settings, mode: 'mono' as const };
+    const a = analyze(img, s);
+    expect(a.palette.length).toBeLessThan(3);
+    expect(a.palette.every((p) => p.pixelCount > 0)).toBe(true);
+    const mono = a.palette.filter((p) => p.monoInclude);
+    expect(mono).toHaveLength(1);
+    expect(mono[0].deleted).toBe(false);
+    const r = await render(a, a.palette, s, boxTracer);
+    expect(r.layers.map((l) => l.name)).toEqual(['schnitt']);
+    expect(r.warnings).toEqual([]);
+  });
+
   it('needsReanalysis only for analysis-relevant settings', () => {
     expect(needsReanalysis(settings, { ...settings })).toBe(false);
     expect(needsReanalysis(settings, { ...settings, overlapMm: 1 })).toBe(false);
