@@ -74,6 +74,9 @@ export function setupPreview(root: HTMLElement): Preview {
       const b = $('busy');
       b.hidden = text === null;
       b.textContent = text ?? '';
+      // Keep showing the previous result, dimmed, until the newer one arrives.
+      $('stage').classList.toggle('computing', text !== null);
+      result.setAttribute('aria-busy', String(text !== null));
     },
     setWarnings(warnings) {
       const w = $('warnings');
