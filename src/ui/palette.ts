@@ -8,8 +8,18 @@ export function renderPalette(
   mono: boolean,
   onChange: () => void,
 ): void {
+  // Remember the focused control so a rebuild can restore it.
+  const active = document.activeElement as HTMLElement | null;
+  const focusKey =
+    active && root.contains(active) && active.dataset.id
+      ? `[data-id="${active.dataset.id}"][data-kind="${active.dataset.kind}"]`
+      : null;
   root.replaceChildren();
   if (entries.length === 0) return;
+  const tag = (el: HTMLElement, id: number, kind: string) => {
+    el.dataset.id = String(id);
+    el.dataset.kind = kind;
+  };
   const h = document.createElement('h2');
   h.textContent = 'Palette';
   root.append(h);
@@ -22,7 +32,10 @@ export function renderPalette(
     const row = document.createElement('div');
     row.className = 'pal-row';
     if (e.deleted) row.classList.add('deleted');
+    const target = e.mergedInto === null ? undefined : entries.find((x) => x.id === e.mergedInto);
+    const targetGone = e.mergedInto !== null && (!target || target.deleted);
     if (e.mergedInto !== null) row.classList.add('merged');
+    if (e.deleted || targetGone) row.classList.add('deleted');
 
     const color = document.createElement('input');
     color.type = 'color';
@@ -37,10 +50,11 @@ export function renderPalette(
     name.className = 'pal-name';
     name.textContent = label(e);
     if (e.mergedInto !== null) {
-      const tag = document.createElement('small');
-      const target = entries.find((x) => x.id === e.mergedInto);
-      tag.textContent = ` → zusammengelegt mit ${target ? label(target) : '?'}`;
-      name.append(tag);
+      const note = document.createElement('small');
+      note.textContent = targetGone
+        ? ` → Ziel gelöscht – wird nicht geschnitten`
+        : ` → zusammengelegt mit ${label(target!)}`;
+      name.append(note);
     }
 
     const del = document.createElement('button');
@@ -56,8 +70,10 @@ export function renderPalette(
     const none = new Option('Zusammenlegen mit…', '');
     merge.append(none);
     for (const o of entries) {
-      if (o.id === e.id || o.deleted) continue;
-      merge.append(new Option(label(o), String(o.id)));
+      if (o.id === e.id) continue;
+      // Keep the current target selectable even when it was deleted later.
+      if (o.deleted && o.id !== e.mergedInto) continue;
+      merge.append(new Option(o.deleted ? `${label(o)} (gelöscht)` : label(o), String(o.id)));
     }
     merge.value = e.mergedInto === null ? '' : String(e.mergedInto);
     merge.addEventListener('change', () => {
@@ -65,6 +81,9 @@ export function renderPalette(
       onChange();
     });
 
+    tag(color, e.id, 'color');
+    tag(del, e.id, 'delete');
+    tag(merge, e.id, 'merge');
     row.append(color, name, del, merge);
 
     if (mono) {
@@ -73,6 +92,7 @@ export function renderPalette(
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = e.monoInclude;
+      tag(cb, e.id, 'mono');
       cb.addEventListener('change', () => {
         e.monoInclude = cb.checked;
         onChange();
@@ -82,4 +102,5 @@ export function renderPalette(
     }
     root.append(row);
   }
+  if (focusKey) root.querySelector<HTMLElement>(focusKey)?.focus();
 }

@@ -41,7 +41,10 @@ const exporter = setupExport(
 );
 const controls = setupControls(el('controls'), () => schedule(false));
 
+let paletteMode: Settings['mode'] = 'multi';
+
 function showPalette(): void {
+  paletteMode = controls.getSettings().mode;
   renderPalette(el('palette'), palette, controls.getSettings().mode === 'mono', () => {
     showPalette();
     schedule(true);
@@ -77,8 +80,8 @@ function schedule(paletteOnly: boolean): void {
     const s = controls.getSettings();
     if (!paletteOnly && analyzedSettings && needsReanalysis(analyzedSettings, s)) sendAnalyze();
     else sendRender();
-    // The palette's "schneiden" column depends on the mode.
-    showPalette();
+    // The palette's "schneiden" column depends on the mode; avoid needless rebuilds (focus).
+    if (s.mode !== paletteMode) showPalette();
   }, DEBOUNCE_MS);
 }
 
