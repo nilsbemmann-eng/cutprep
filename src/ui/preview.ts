@@ -1,7 +1,10 @@
 export interface Preview {
   setOriginal(url: string | null): void;
   setSvg(svg: string | null): void;
+  /** Shows the text as status and marks the shown result as outdated (dimmed). */
   setBusy(text: string | null): void;
+  /** Marks the shown result as outdated (dimmed) without a status text, e.g. after an error. */
+  setStale(stale: boolean): void;
   setWarnings(warnings: string[]): void;
   setError(message: string | null): void;
 }
@@ -75,8 +78,11 @@ export function setupPreview(root: HTMLElement): Preview {
       b.hidden = text === null;
       b.textContent = text ?? '';
       // Keep showing the previous result, dimmed, until the newer one arrives.
-      $('stage').classList.toggle('computing', text !== null);
-      result.setAttribute('aria-busy', String(text !== null));
+      this.setStale(text !== null);
+    },
+    setStale(stale) {
+      $('stage').classList.toggle('computing', stale);
+      result.setAttribute('aria-busy', String(stale));
     },
     setWarnings(warnings) {
       const w = $('warnings');
