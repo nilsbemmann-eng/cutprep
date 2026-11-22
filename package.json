@@ -1,0 +1,23 @@
+{
+  "name": "cutprep",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline-PWA: Rasterbilder in Cricut-taugliche, ebenengetrennte SVGs umwandeln",
+  "license": "GPL-2.0-or-later",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vite-plugin-pwa": "2.0.0",
+    "vitest": "5.1.1"
+  },
+  "dependencies": {
+    "esm-potrace-wasm": "0.5.1"
+  }
+}
