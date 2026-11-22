@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyze, needsReanalysis, render } from '../src/core/pipeline';
+import { analyze, needsReanalysis, render, RenderAbortedError } from '../src/core/pipeline';
 import { validateCricutSvg } from '../src/core/svg';
 import type { Tracer } from '../src/core/trace';
 import { DEFAULT_SETTINGS, type RGBAImage, type Settings } from '../src/core/types';
@@ -216,5 +216,38 @@ describe('pipeline', () => {
     const stack = await render(a, a.palette, { ...s, mode: 'multi', stackOnDarkest: true }, boxTracer);
     expect(stack.layers[0].name).not.toBe(`${inner.name}-basis`);
     expect(stack.layers[0].name.endsWith('-basis')).toBe(true);
+  });
+});
+
+describe('render abort', () => {
+  it('stops after the layer during which shouldAbort turned true, without an SVG', async () => {
+    const a = analyze(testImage(), settings);
+    let calls = 0;
+    const counting: Tracer = async (...args) => {
+      calls++;
+      return boxTracer(...args);
+    };
+    const run = render(a, a.palette, settings, counting, () => calls >= 1);
+    await expect(run).rejects.toBeInstanceOf(RenderAbortedError);
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
+    expect(calls).toBe(1);
+  });
+
+  it('traces nothing when aborted before the first layer', async () => {
+    const a = analyze(testImage(), settings);
+    let calls = 0;
+    const counting: Tracer = async (...args) => {
+      calls++;
+      return boxTracer(...args);
+    };
+    await expect(render(a, a.palette, settings, counting, () => true)).rejects.toBeInstanceOf(RenderAbortedError);
+    expect(calls).toBe(0);
+  });
+
+  it('renders normally while shouldAbort stays false', async () => {
+    const a = analyze(testImage(), settings);
+    const r = await render(a, a.palette, settings, boxTracer, () => false);
+    expect(validateCricutSvg(r.svg)).toEqual([]);
+    expect(r.layers.length).toBeGreaterThan(1);
   });
 });

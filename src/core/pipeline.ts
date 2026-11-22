@@ -140,11 +140,25 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
   return { width, height, pxPerMm, labels, palette };
 }
 
+/** Thrown by render() when its shouldAbort callback asks it to stop. */
+export class RenderAbortedError extends Error {
+  constructor() {
+    super('Vorschau abgebrochen');
+    this.name = 'AbortError';
+  }
+}
+
+/**
+ * shouldAbort is checked before each layer is traced and before the SVG is built; once
+ * it returns true, render rejects with RenderAbortedError. To let it change mid-render
+ * the caller's tracer has to yield to its event loop (the core stays DOM/worker free).
+ */
 export async function render(
   a: Analysis,
   palette: PaletteEntry[],
   settings: Settings,
   tracer: Tracer,
+  shouldAbort?: () => boolean,
 ): Promise<RenderResult> {
   const timer = import.meta.env.DEV ? startTimer('render') : null;
   const masks = buildLayerMasks(a.labels, a.width, a.height, palette, settings, a.pxPerMm);
@@ -157,12 +171,20 @@ export async function render(
   const heightMm = (widthMm * a.height) / a.width;
   const mmPerPx = widthMm / a.width;
   const traced: { name: string; color: RGB; paths: string[] }[] = [];
+  const abortIfAsked = () => {
+    if (!shouldAbort?.()) return;
+    timer?.done('abgebrochen');
+    throw new RenderAbortedError();
+  };
   for (const m of masks) {
+    abortIfAsked();
     const raw = await tracer(m.mask, m.width, m.height, opts);
     const paths = raw.filter((d) => d.length > 0).map((d) => scalePathData(d, mmPerPx));
     if (paths.length > 0) traced.push({ name: m.name, color: m.color, paths });
     timer?.lap(`trace ${m.name}`);
   }
+
+  abortIfAsked();
 
   const ids = layerIds(traced.map((l) => l.name));
   const layers: RenderLayer[] = traced.map((l, i) => ({
