@@ -42,6 +42,7 @@ describe('real fixture outlines (grinch, defaults)', () => {
     let layer = 0;
     let notRef = 0;
     let far = 0;
+    let light = 0;
     for (let i = 0; i < ref.length; i++) {
       const inLayer = a.labels[i] === black.id;
       if (ref[i]) refN++;
@@ -50,12 +51,17 @@ describe('real fixture outlines (grinch, defaults)', () => {
       if (ref[i]) hit++;
       else notRef++;
       if (!nearRef[i]) far++;
+      if (L[i] >= 60) light++;
     }
-    // Calibration 2026-11-22: recall 93.3 % (66.8 % before the outline step), 19.5 % of the
-    // layer outside the reference (anti-aliasing fringe, L* 40-50), 3.3 % farther than 3 px.
+    // Calibration 2026-11-22: recall 93.5 % (66.8 % before the outline step); 26.8 % of the
+    // layer lies outside the reference, almost all anti-aliasing fringe and faint strokes
+    // with L* 40-60; 5.8 % is farther than 3 px from any reference pixel (faint strokes on
+    // the white fur and hand), 3.3 % is light (L* >= 60). A flooded colour area would push
+    // the last two up at once.
     expect(hit / refN).toBeGreaterThanOrEqual(0.9);
-    expect(notRef / layer).toBeLessThan(0.25);
-    expect(far / layer).toBeLessThan(0.05);
+    expect(notRef / layer).toBeLessThan(0.32);
+    expect(far / layer).toBeLessThan(0.08);
+    expect(light / layer).toBeLessThan(0.05);
     // The dark-green anti-aliasing cluster no longer exists as a layer of its own.
     expect(a.palette.map((p) => p.name)).not.toContain('dunkelgrün');
   }, 60000);

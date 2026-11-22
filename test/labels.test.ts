@@ -148,3 +148,12 @@ describe('dissolveLabels', () => {
     expect(Array.from(dissolveLabels(l, 5, 1, new Set([2])))).toEqual([-1, 2, 2, -1, 0]);
   });
 });
+
+describe('dissolveLabels with a pixel mask', () => {
+  it('also refills flagged pixels of kept labels', () => {
+    // 0 3 3 3 1 : the 3s are flagged pixel-wise (label 3 itself is not dissolved)
+    const l = Int16Array.from([0, 3, 3, 3, 1]);
+    const open = Uint8Array.from([0, 1, 1, 0, 0]);
+    expect(Array.from(dissolveLabels(l, 5, 1, new Set(), open))).toEqual([0, 0, 3, 3, 1]);
+  });
+});

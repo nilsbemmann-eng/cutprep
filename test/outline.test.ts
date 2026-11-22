@@ -139,6 +139,34 @@ describe('analyze with outlinesBlack', () => {
     expect(a.palette.map((p) => p.name)).not.toContain('schwarz');
   });
 
+  it('splits the grey anti-aliasing halo of a soft line between black and white', () => {
+    // White page, a mid-grey patch (so a grey cluster exists) and a soft 4 px ink line whose
+    // edges fade over 3 px: without the halo step its edges become a grey ring.
+    const img = fill(200, WHITE);
+    rect(img, 150, 10, 190, 50, [150, 150, 150]);
+    for (let y = 0; y < 200; y++)
+      for (let x = 0; x < 200; x++) {
+        const d = segDist(x + 0.5, y + 0.5, LINE.ax, LINE.ay, LINE.bx, LINE.by);
+        const cov = Math.max(0, Math.min(1, (3.5 - d) / 3));
+        if (cov <= 0) continue;
+        const o = (y * 200 + x) * 4;
+        for (let c = 0; c < 3; c++) img.data[o + c] = img.data[o + c] * (1 - cov) + INK[c] * cov;
+      }
+    const a = analyze(img, settings);
+    const grey = a.palette.find((p) => p.name === 'grau');
+    expect(grey).toBeDefined(); // the patch keeps its own layer
+    let band = 0;
+    let greyInBand = 0;
+    for (let y = 0; y < 200; y++)
+      for (let x = 0; x < 200; x++) {
+        const d = segDist(x + 0.5, y + 0.5, LINE.ax + 6, LINE.ay + 4, LINE.bx - 6, LINE.by - 4);
+        if (d > 5) continue;
+        band++;
+        if (a.labels[y * 200 + x] === grey!.id) greyInBand++;
+      }
+    expect(greyInBand / band).toBeLessThan(0.02);
+  });
+
   it('leaves a dark-green fill crossed by an ink line dark green', () => {
     const img = panelWithLine();
     rect(img, 60, 60, 140, 140, DARK_GREEN);

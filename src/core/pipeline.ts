@@ -102,7 +102,7 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
     const res = forceOutlines(labels, width, height, outlineMask(leveled, {
       radiusPx: (OUTLINE_MAX_LINE_MM / 2) * pxPerMm,
       minAreaPx: minAreaPx,
-    }), colors, bg, addedBlackId, FRINGE_MM * pxPerMm);
+    }), fitExclude, colors, bg, addedBlackId, FRINGE_MM * pxPerMm);
     labels = res.labels;
     outlineLabel = res.target;
     timer?.lap('outlines');
@@ -175,14 +175,18 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
  * Paints the outline mask onto the label map with the black label: the darkest non-background
  * cluster when it is dark enough (L* <= BLACK_MAX_L), otherwise `addedLabel`. Clusters made up
  * almost only of the outlines' anti-aliasing fringe (dark green between ink and green) are
- * dissolved into their neighbours so they cannot keep pieces of the lines. Dark backgrounds
- * are left alone. Without any outline pixel nothing changes and target is null.
+ * dissolved into their neighbours so they cannot keep pieces of the lines; likewise
+ * blend-seam pixels (`seam`, the edge mask) of other colours right next to the outlines, so
+ * a line on white does not get a grey halo layer. Background pixels are not refilled: on a
+ * hard edge that would thicken the line by a pixel and can close off enclosed areas. Dark backgrounds are left alone. Without any outline pixel
+ * nothing changes and target is null.
  */
 function forceOutlines(
   labels: Int16Array,
   w: number,
   h: number,
   mask: Uint8Array,
+  seam: Uint8Array,
   colors: RGB[],
   bg: number | null,
   addedLabel: number,
@@ -220,12 +224,13 @@ function forceOutlines(
   }
 
   const out = labels.slice();
+  const halo = new Uint8Array(out.length);
   for (let i = 0; i < out.length; i++) {
-    if (!mask[i] || out[i] < 0) continue;
-    if (keepBg && out[i] === bg) continue;
-    out[i] = target;
+    if (out[i] < 0 || (keepBg && out[i] === bg)) continue;
+    if (mask[i]) out[i] = target;
+    else if (seam[i] && near[i] && out[i] !== target && out[i] !== bg) halo[i] = 1;
   }
-  return { labels: dissolveLabels(out, w, h, fringe), target };
+  return { labels: dissolveLabels(out, w, h, fringe, halo), target };
 }
 
 /** Thrown by render() when its shouldAbort callback asks it to stop. */

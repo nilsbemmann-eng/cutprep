@@ -31,9 +31,14 @@ export interface OutlineOptions {
   minAreaPx: number;
 }
 
+// Tuned on test/fixtures/grinch-raster.jpg (see test/fixtureOutline.test.ts).
 const TOPHAT_MIN = 10;
 const TOPHAT_REL = 0.25;
-const MAX_L = 50;
+/**
+ * Faint strokes on white (pompom, hand) have cores around L* 45-58; the mid-grey zipper
+ * teeth (L* ≈ 64, also narrow and darker than their surroundings) must stay above this.
+ */
+const MAX_L = 58;
 const INK_L = 25;
 const INK_MAX_CHROMA = 30;
 const GROW_REL = 0.45;
