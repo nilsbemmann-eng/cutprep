@@ -25,9 +25,15 @@ export function renderPalette(
   h.textContent = 'Palette';
   root.append(h);
 
+  // Background and the white inside the motif share a colour name; the role tells them apart.
+  const baseLabel = (e: PaletteEntry) =>
+    e.role === 'interior' ? `${e.name} (im Motiv)` : e.role === 'background' ? `${e.name} (Hintergrund)` : e.name;
   const nameCount = new Map<string, number>();
-  for (const e of entries) nameCount.set(e.name, (nameCount.get(e.name) ?? 0) + 1);
-  const label = (e: PaletteEntry) => (nameCount.get(e.name)! > 1 ? `${e.name} (${e.id})` : e.name);
+  for (const e of entries) nameCount.set(baseLabel(e), (nameCount.get(baseLabel(e)) ?? 0) + 1);
+  const label = (e: PaletteEntry) => {
+    const base = baseLabel(e);
+    return nameCount.get(base)! > 1 ? `${base} (${e.id})` : base;
+  };
 
   for (const e of entries) {
     const row = document.createElement('div');
@@ -62,6 +68,7 @@ export function renderPalette(
     const del = document.createElement('button');
     del.type = 'button';
     del.textContent = e.deleted ? 'Wiederherstellen' : 'Löschen';
+    del.setAttribute('aria-label', `${label(e)} ${e.deleted ? 'wiederherstellen' : 'löschen'}`);
     del.addEventListener('click', () => {
       e.deleted = !e.deleted;
       onChange();
@@ -94,6 +101,7 @@ export function renderPalette(
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = e.monoInclude;
+      cb.setAttribute('aria-label', `${label(e)} schneiden`);
       tag(cb, e.id, 'mono');
       cb.addEventListener('change', () => {
         e.monoInclude = cb.checked;
