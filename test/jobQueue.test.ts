@@ -1,20 +1,22 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SETTINGS, type RGBAImage } from '../src/core/types';
 import { LatestWinsQueue } from '../src/jobQueue';
+import { carryNewImage, type WorkerRequest } from '../src/workerProtocol';
 
 type Job = { type: 'analyze' | 'render'; id: number };
 const an = (id: number): Job => ({ type: 'analyze', id });
 const re = (id: number): Job => ({ type: 'render', id });
 
 describe('LatestWinsQueue', () => {
-  it('hands out a job when idle and is busy until finish', () => {
+  it('hands out one job at a time until finish', () => {
     const q = new LatestWinsQueue<Job>();
-    expect(q.busy).toBe(false);
     expect(q.enqueue(re(1))).toEqual([]);
     expect(q.take()).toEqual(re(1));
-    expect(q.busy).toBe(true);
+    q.enqueue(re(2));
     expect(q.take()).toBeNull();
     q.finish();
-    expect(q.busy).toBe(false);
+    expect(q.take()).toEqual(re(2));
+    q.finish();
     expect(q.take()).toBeNull();
   });
 
@@ -79,14 +81,45 @@ describe('LatestWinsQueue', () => {
     q.enqueue(re(3));
     expect(q.shouldAbortRunning()).toBe(false);
   });
+});
 
-  it('isStale tells whether a job was superseded or is still current', () => {
-    const q = new LatestWinsQueue<Job>();
-    const first = re(1);
-    q.enqueue(first);
+describe('LatestWinsQueue with carryNewImage', () => {
+  const img = (n: number): RGBAImage => ({ width: n, height: 1, data: new Uint8ClampedArray(4 * n) });
+  const analyzeReq = (requestId: number, image?: RGBAImage): WorkerRequest => ({
+    type: 'analyze',
+    requestId,
+    settings: DEFAULT_SETTINGS,
+    image,
+  });
+  const renderReq = (requestId: number): WorkerRequest => ({
+    type: 'render',
+    requestId,
+    palette: [],
+    settings: DEFAULT_SETTINGS,
+  });
+
+  it('a settings-only analyze replacing a pending analyze with a new image analyses that image', () => {
+    const q = new LatestWinsQueue<WorkerRequest>(carryNewImage);
+    const second = img(2);
+    q.enqueue(analyzeReq(1, img(1)));
     q.take();
-    expect(q.isStale(first)).toBe(false);
-    q.enqueue(re(2));
-    expect(q.isStale(first)).toBe(true);
+    q.enqueue(analyzeReq(2, second));
+    q.enqueue(analyzeReq(3));
+    q.finish();
+    const next = q.take();
+    expect(next).toMatchObject({ type: 'analyze', requestId: 3 });
+    expect(next?.type === 'analyze' && next.image).toBe(second);
+  });
+
+  it('a newer image wins over an older pending one', () => {
+    const q = new LatestWinsQueue<WorkerRequest>(carryNewImage);
+    const third = img(3);
+    q.enqueue(renderReq(1));
+    q.take();
+    q.enqueue(analyzeReq(2, img(2)));
+    q.enqueue(analyzeReq(3, third));
+    q.finish();
+    const next = q.take();
+    expect(next?.type === 'analyze' && next.image).toBe(third);
   });
 });

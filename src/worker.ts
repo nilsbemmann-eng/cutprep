@@ -3,7 +3,7 @@ import { setTimingSink } from './core/timing';
 import { createPotraceTracer, type Tracer } from './core/trace';
 import type { RGBAImage } from './core/types';
 import { LatestWinsQueue } from './jobQueue';
-import type { WorkerRequest, WorkerResponse } from './workerProtocol';
+import { carryNewImage, type WorkerRequest, type WorkerResponse } from './workerProtocol';
 
 /** Source image of the current file (already capped at 2400 px by the UI). */
 let source: RGBAImage | null = null;
@@ -14,9 +14,10 @@ let tracerPromise: Promise<Tracer> | null = null;
 /**
  * Only the newest request of each kind is worked on; superseded ones get no response.
  * That is safe for the UI: it only waits for its newest requestId, and a request is
- * dropped only once a newer one (which will answer) has arrived.
+ * dropped only once a newer one (which will answer) has arrived. A dropped analyze hands
+ * its new image to the analyze replacing it (carryNewImage), so no image gets lost.
  */
-const queue = new LatestWinsQueue<WorkerRequest>();
+const queue = new LatestWinsQueue<WorkerRequest>(carryNewImage);
 let pumping = false;
 
 /** A macrotask: lets message events that arrived meanwhile reach onmessage (microtasks don't). */
