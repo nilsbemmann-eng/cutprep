@@ -109,15 +109,16 @@ export async function render(
     turdsize: Math.ceil(settings.minPartAreaMm2 * a.pxPerMm * a.pxPerMm),
     alphamax: 0.5 + settings.smoothing * 0.8,
   };
+  const widthMm = settings.targetWidthCm * 10;
+  const heightMm = (widthMm * a.height) / a.width;
+  const mmPerPx = widthMm / a.width;
   const traced: { name: string; color: RGB; paths: string[] }[] = [];
   for (const m of masks) {
     const raw = await tracer(m.mask, m.width, m.height, opts);
-    const paths = raw.filter((d) => d.length > 0).map((d) => scalePathData(d, 1 / a.pxPerMm));
+    const paths = raw.filter((d) => d.length > 0).map((d) => scalePathData(d, mmPerPx));
     if (paths.length > 0) traced.push({ name: m.name, color: m.color, paths });
   }
 
-  const widthMm = a.width / a.pxPerMm;
-  const heightMm = a.height / a.pxPerMm;
   const ids = layerIds(traced.map((l) => l.name));
   const layers: RenderLayer[] = traced.map((l, i) => ({
     id: ids[i],

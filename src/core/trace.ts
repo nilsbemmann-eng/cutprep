@@ -1,3 +1,5 @@
+import { transformPathData } from './svg';
+
 export type Tracer = (
   mask: Uint8Array,
   w: number,
@@ -22,7 +24,7 @@ export async function createPotraceTracer(): Promise<Tracer> {
       data[i * 4 + 3] = 255;
     }
     const image = { data, width: w, height: h } as unknown as ImageData;
-    return potrace(image, {
+    const raw = await potrace(image, {
       pathonly: true,
       extractcolors: false,
       turdsize: opts.turdsize,
@@ -30,5 +32,8 @@ export async function createPotraceTracer(): Promise<Tracer> {
       opticurve: 1,
       opttolerance: 0.2,
     });
+    // potrace's SVG backend output is 10x scaled with Y pointing up: normalise
+    // to pixel coordinates with the origin at the top left.
+    return raw.map((d) => transformPathData(d, 0.1, -0.1, h));
   };
 }

@@ -16,5 +16,7 @@ describe('createPotraceTracer', () => {
     const joined = paths.join(' ');
     expect((joined.match(/M/g) ?? []).length).toBe(2);
     expect(joined).not.toMatch(/[Aa]/);
+    // Normalised to pixel coordinates (origin top left): outer square 5..35.
+    expect(paths.some((d) => d.startsWith('M5 35') || d.startsWith('M5 5') || d.startsWith('M35'))).toBe(true);
   });
 });

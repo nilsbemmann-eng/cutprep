@@ -8,23 +8,42 @@ function fmt(n: number): string {
 
 const TOKEN = /([a-zA-Z])|(-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)/g;
 
+const ARITY: Record<string, number> = { m: 2, l: 2, t: 2, h: 1, v: 1, c: 6, s: 4, q: 4, z: 0 };
+
 /**
- * Multiplies every number in SVG path data by `factor`. Valid for M/L/C/Z
- * style commands only (no arcs, where flags and radii would be mis-scaled).
+ * Command-aware affine transform of SVG path data (x' = sx*x, y' = ty + sy*y).
+ * Absolute coordinates get the translation `ty`; relative ones only the scale.
+ * Output: command letter directly followed by its numbers, all separated by single spaces.
+ * Arcs are not supported (flags and radii cannot be transformed this way).
  */
-export function scalePathData(d: string, factor: number): string {
-  let out = '';
-  let prevNumber = false;
+export function transformPathData(d: string, sx: number, sy: number, ty: number): string {
+  const out: string[] = [];
+  let cmd = '';
+  let idx = 0; // index of the next number within the current command group
   for (const m of d.matchAll(TOKEN)) {
     if (m[1]) {
-      out += m[1];
-      prevNumber = false;
-    } else {
-      out += (prevNumber ? ' ' : '') + fmt(parseFloat(m[2]) * factor);
-      prevNumber = true;
+      if (/[aA]/.test(m[1])) throw new Error('Arc commands (A/a) are not supported');
+      cmd = m[1];
+      idx = 0;
+      out.push(out.length > 0 ? ` ${cmd}` : cmd);
+      continue;
     }
+    const lower = cmd.toLowerCase();
+    const arity = ARITY[lower];
+    if (arity === undefined || arity === 0) throw new Error(`Unexpected number in path data (command "${cmd}")`);
+    const abs = cmd !== lower;
+    const isX = lower === 'h' || (lower !== 'v' && idx % 2 === 0);
+    const v = parseFloat(m[2]);
+    const num = fmt(isX ? sx * v : abs ? ty + sy * v : sy * v);
+    out.push(idx === 0 && /[a-zA-Z]$/.test(out[out.length - 1] ?? '') ? num : ` ${num}`);
+    idx = (idx + 1) % arity;
   }
-  return out;
+  return out.join('');
+}
+
+/** Multiplies every coordinate in SVG path data by `factor` (no arcs). */
+export function scalePathData(d: string, factor: number): string {
+  return transformPathData(d, factor, factor, 0);
 }
 
 const UMLAUTS: Record<string, string> = { 'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss' };

@@ -83,7 +83,21 @@ describe('pipeline', () => {
     const a = analyze(testImage(), { ...settings, mode: 'mono' });
     const r = await render(a, a.palette, { ...settings, mode: 'mono' }, boxTracer);
     expect(r.layers).toHaveLength(1);
-    expect(r.svg).toContain('M1.1 1.1L19 1.1');
+    expect(r.svg).toContain('M1.1 1.1 L19 1.1');
+  });
+
+  it('hits the exact target width even when the working width is capped', async () => {
+    const w = 1000;
+    const h = 3000;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        data.set(x < 500 ? [220, 20, 20, 255] : [255, 255, 255, 255], (y * w + x) * 4);
+    const s: Settings = { ...settings, targetWidthCm: 20 };
+    const a = analyze({ width: w, height: h, data }, s);
+    expect(a.width).not.toBe(2000);
+    const r = await render(a, a.palette, s, boxTracer);
+    expect(r.svg).toContain('width="200mm" height="600mm"');
   });
 
   it('drops palette entries wiped out by cleanup', async () => {
