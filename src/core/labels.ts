@@ -139,3 +139,39 @@ export function removeSmallRegions(labels: Int16Array, w: number, h: number, min
   }
   return cur;
 }
+
+/**
+ * Relabels every pixel whose label is flagged in `dissolve` with the label of the nearest
+ * (4-connected, breadth-first) pixel that keeps its label, so a dissolved cluster is split
+ * between its neighbours along the middle. -1 pixels neither change nor spread; dissolved
+ * pixels that no kept label can reach stay as they were. Returns a new array.
+ */
+export function dissolveLabels(labels: Int16Array, w: number, h: number, dissolve: ReadonlySet<number>): Int16Array {
+  const out = labels.slice();
+  const total = w * h;
+  if (dissolve.size === 0 || total === 0) return out;
+  const open = new Uint8Array(total);
+  const queue = new Int32Array(total);
+  let tail = 0;
+  for (let i = 0; i < total; i++) {
+    if (labels[i] < 0) continue;
+    if (dissolve.has(labels[i])) open[i] = 1;
+    else queue[tail++] = i;
+  }
+  for (let head = 0; head < tail; head++) {
+    const p = queue[head];
+    const x = p % w;
+    const l = out[p];
+    const reach = (k: number) => {
+      if (!open[k]) return;
+      open[k] = 0;
+      out[k] = l;
+      queue[tail++] = k;
+    };
+    if (x > 0) reach(p - 1);
+    if (x < w - 1) reach(p + 1);
+    if (p >= w) reach(p - w);
+    if (p < total - w) reach(p + w);
+  }
+  return out;
+}

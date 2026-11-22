@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { majorityFilter, removeSmallRegions } from '../src/core/labels';
+import { dissolveLabels, majorityFilter, removeSmallRegions } from '../src/core/labels';
 
 function make(w: number, h: number, f: (x: number, y: number) => number): Int16Array {
   const a = new Int16Array(w * h);
@@ -134,5 +134,17 @@ describe('removeSmallRegions', () => {
     const out = removeSmallRegions(l, w, w, 10);
     expect(out).not.toBe(l);
     expect(l).toEqual(snap);
+  });
+});
+
+describe('dissolveLabels', () => {
+  it('splits a dissolved label between its nearest neighbours', () => {
+    // 1 row: 0 0 2 2 2 2 1 1  -> label 2 dissolved, halves go to 0 and 1
+    const l = Int16Array.from([0, 0, 2, 2, 2, 2, 1, 1]);
+    expect(Array.from(dissolveLabels(l, 8, 1, new Set([2])))).toEqual([0, 0, 0, 0, 1, 1, 1, 1]);
+  });
+  it('never spreads from or into -1 and keeps unreachable pixels', () => {
+    const l = Int16Array.from([-1, 2, 2, -1, 0]);
+    expect(Array.from(dissolveLabels(l, 5, 1, new Set([2])))).toEqual([-1, 2, 2, -1, 0]);
   });
 });
