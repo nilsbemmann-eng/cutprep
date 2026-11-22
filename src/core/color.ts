@@ -78,3 +78,25 @@ export function germanColorName(rgb: RGB): string {
 export function toHex(rgb: RGB): string {
   return '#' + rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('');
 }
+
+function linearToSrgb(v: number): number {
+  const c = v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+  return Math.min(255, Math.max(0, Math.round(c * 255)));
+}
+
+function labFInv(t: number): number {
+  const d = 6 / 29;
+  return t > d ? t * t * t : 3 * d * d * (t - 4 / 29);
+}
+
+/** CIE L*a*b* (D65) to sRGB; integers 0-255, clamped. */
+export function labToRgb(lab: [number, number, number]): RGB {
+  const fy = (lab[0] + 16) / 116;
+  const x = XN * labFInv(fy + lab[1] / 500);
+  const y = YN * labFInv(fy);
+  const z = ZN * labFInv(fy - lab[2] / 200);
+  const r = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
+  const g = -0.969266 * x + 1.8760108 * y + 0.041556 * z;
+  const b = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+  return [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b)];
+}
