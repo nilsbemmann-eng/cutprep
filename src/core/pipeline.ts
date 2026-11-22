@@ -1,7 +1,8 @@
 import { germanColorName, rgbToLab } from './color';
 import { splitInteriorBackground } from './interior';
-import { majorityFilter, removeSmallRegions } from './labels';
-import { buildLayerMasks } from './layers';
+import { dissolveLabels, majorityFilter, removeSmallRegions } from './labels';
+import { buildLayerMasks, dilate } from './layers';
+import { outlineMask } from './outline';
 import { autoLevels, edgeMask, flattenAlpha, resizeBilinear, workingSize } from './preprocess';
 import { detectBackground, kmeansLab } from './quantize';
 import { buildSvg, layerIds, scalePathData } from './svg';
@@ -34,6 +35,16 @@ export const WIDTH_WARNING = 'Breiter als 21,6 cm – passt nicht auf das Joy-Xt
 export const NO_LAYER_WARNING = 'Keine Ebene ausgewählt';
 const MAX_MATERIAL_WIDTH_CM = 21.6;
 
+/** Widest stroke (mm) still treated as a line by the outline mask; wider ink is a k-means area anyway. */
+const OUTLINE_MAX_LINE_MM = 1.2;
+/** A cluster at least this dark (L*) is the black layer the outlines go to; otherwise 'schwarz' is added. */
+const BLACK_MAX_L = 35;
+/** Background colours darker than this are never painted over by outlines (dark-background images). */
+const DARK_BACKGROUND_L = 50;
+/** Clusters with at least this share of pixels within FRINGE_MM of the outlines are anti-aliasing fringe. */
+const FRINGE_SHARE = 0.8;
+const FRINGE_MM = 0.3;
+
 /** True when a settings change invalidates the (expensive) analysis. */
 export function needsReanalysis(prev: Settings, next: Settings): boolean {
   return (
@@ -41,7 +52,8 @@ export function needsReanalysis(prev: Settings, next: Settings): boolean {
     prev.smoothing !== next.smoothing ||
     prev.minPartAreaMm2 !== next.minPartAreaMm2 ||
     prev.targetWidthCm !== next.targetWidthCm ||
-    prev.gapCloseMm !== next.gapCloseMm
+    prev.gapCloseMm !== next.gapCloseMm ||
+    prev.outlinesBlack !== next.outlinesBlack
   );
 }
 
@@ -83,6 +95,18 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
   timer?.lap('removeSmall');
 
   const bg = detectBackground(labels, width, height);
+  // Interior copy of the background is colors.length; an added black entry comes after it.
+  const addedBlackId = colors.length + 1;
+  let outlineLabel: number | null = null;
+  if (settings.outlinesBlack) {
+    const res = forceOutlines(labels, width, height, outlineMask(leveled, {
+      radiusPx: (OUTLINE_MAX_LINE_MM / 2) * pxPerMm,
+      minAreaPx: minAreaPx,
+    }), colors, bg, addedBlackId, FRINGE_MM * pxPerMm);
+    labels = res.labels;
+    outlineLabel = res.target;
+    timer?.lap('outlines');
+  }
   // Background-coloured areas inside the motif (e.g. white fur) get a label of their own
   // (colors.length, so it never collides with a cluster id) instead of being deleted.
   const split = splitInteriorBackground(
@@ -99,7 +123,10 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
     timer?.lap('removeSmall#2');
   }
 
-  const entryColors = bg !== null ? [...colors, colors[bg]] : colors;
+  // Index = label id. Slot colors.length is the interior copy of the background (unused
+  // without one, it then simply gets no pixels); slot addedBlackId the added outline black.
+  const entryColors: RGB[] = [...colors, bg !== null ? colors[bg] : [255, 255, 255]];
+  if (outlineLabel === addedBlackId) entryColors.push([0, 0, 0]);
   const counts = new Array<number>(entryColors.length).fill(0);
   for (let i = 0; i < labels.length; i++) if (labels[i] >= 0) counts[labels[i]]++;
 
@@ -118,6 +145,8 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
       };
       if (id === bg) e.role = 'background';
       else if (id === colors.length) e.role = 'interior';
+      // The outlines' own layer, even if an outline-only colour would be named differently.
+      if (id === addedBlackId) e.name = 'schwarz';
       return e;
     })
     .filter((e) => e.pixelCount > 0);
@@ -133,11 +162,70 @@ export function analyze(src: RGBAImage, settings: Settings): Analysis {
       darkest = e;
     }
   }
-  if (darkest) darkest.monoInclude = true;
+  // With outlines on, their layer is the cut colour (it is the darkest cluster or the added black).
+  const cut = palette.find((e) => e.id === outlineLabel) ?? darkest;
+  if (cut) cut.monoInclude = true;
   timer?.lap('palette');
   timer?.done();
 
   return { width, height, pxPerMm, labels, palette };
+}
+
+/**
+ * Paints the outline mask onto the label map with the black label: the darkest non-background
+ * cluster when it is dark enough (L* <= BLACK_MAX_L), otherwise `addedLabel`. Clusters made up
+ * almost only of the outlines' anti-aliasing fringe (dark green between ink and green) are
+ * dissolved into their neighbours so they cannot keep pieces of the lines. Dark backgrounds
+ * are left alone. Without any outline pixel nothing changes and target is null.
+ */
+function forceOutlines(
+  labels: Int16Array,
+  w: number,
+  h: number,
+  mask: Uint8Array,
+  colors: RGB[],
+  bg: number | null,
+  addedLabel: number,
+  fringePx: number,
+): { labels: Int16Array; target: number | null } {
+  let any = false;
+  for (let i = 0; i < mask.length && !any; i++) any = mask[i] === 1;
+  if (!any) return { labels, target: null };
+
+  let darkest = -1;
+  let darkestL = Infinity;
+  colors.forEach((c, id) => {
+    const L = rgbToLab(c)[0];
+    if (id !== bg && L < darkestL) {
+      darkestL = L;
+      darkest = id;
+    }
+  });
+  const target = darkest >= 0 && darkestL <= BLACK_MAX_L ? darkest : addedLabel;
+  const keepBg = bg !== null && rgbToLab(colors[bg])[0] < DARK_BACKGROUND_L;
+
+  const total = new Array<number>(colors.length).fill(0);
+  const nearLines = new Array<number>(colors.length).fill(0);
+  const near = dilate(mask, w, h, Math.max(1, Math.round(fringePx)));
+  for (let i = 0; i < labels.length; i++) {
+    const l = labels[i];
+    if (l < 0 || l >= colors.length) continue;
+    total[l]++;
+    if (near[i]) nearLines[l]++;
+  }
+  const fringe = new Set<number>();
+  for (let id = 0; id < colors.length; id++) {
+    if (id === target || id === bg || total[id] === 0) continue;
+    if (nearLines[id] >= FRINGE_SHARE * total[id]) fringe.add(id);
+  }
+
+  const out = labels.slice();
+  for (let i = 0; i < out.length; i++) {
+    if (!mask[i] || out[i] < 0) continue;
+    if (keepBg && out[i] === bg) continue;
+    out[i] = target;
+  }
+  return { labels: dissolveLabels(out, w, h, fringe), target };
 }
 
 /** Thrown by render() when its shouldAbort callback asks it to stop. */

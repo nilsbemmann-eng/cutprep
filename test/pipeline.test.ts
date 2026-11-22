@@ -145,6 +145,7 @@ describe('pipeline', () => {
       { minPartAreaMm2: 3 },
       { targetWidthCm: 10 },
       { gapCloseMm: 2 },
+      { outlinesBlack: false },
     ])
       expect(needsReanalysis(settings, { ...settings, ...patch })).toBe(true);
   });

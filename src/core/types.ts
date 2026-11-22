@@ -17,6 +17,11 @@ export interface Settings {
   stackOnDarkest: boolean;
   /** Outline gaps up to about twice this width still enclose background-coloured areas. */
   gapCloseMm: number;
+  /**
+   * Dark line art (outlines, even thin anti-aliased ones) always goes to the black layer,
+   * protected from smoothing and speck removal; see core/outline.ts.
+   */
+  outlinesBlack: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -28,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'multi',
   stackOnDarkest: false,
   gapCloseMm: 1,
+  outlinesBlack: true,
 };
 
 export interface PaletteEntry {

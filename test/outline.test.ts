@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { rgbToLab } from '../src/core/color';
 import { lightnessChroma, outlineMask, squareFilter } from '../src/core/outline';
-import type { RGB, RGBAImage } from '../src/core/types';
+import { analyze } from '../src/core/pipeline';
+import { DEFAULT_SETTINGS, type RGB, type RGBAImage, type Settings } from '../src/core/types';
 
+const WHITE: RGB = [255, 255, 255];
+const RED: RGB = [220, 30, 40];
 const GREEN: RGB = [136, 199, 5];
 const DARK_GREEN: RGB = [0, 80, 35];
 const INK: RGB = [20, 15, 10];
@@ -50,6 +53,17 @@ function lineCore(size: number): number[] {
   return out;
 }
 
+/** White page, green panel 20..180 with an 8 px ink frame (so an ink cluster exists), thin line inside. */
+function panelWithLine(): RGBAImage {
+  const img = fill(200, WHITE);
+  rect(img, 12, 12, 188, 188, INK);
+  rect(img, 20, 20, 180, 180, GREEN);
+  drawLine(img);
+  return img;
+}
+
+const settings: Settings = { ...DEFAULT_SETTINGS, colorCount: 3, targetWidthCm: 2 };
+
 describe('outlineMask', () => {
   it('covers a thin anti-aliased line completely without fattening it much', () => {
     const img = fill(200, GREEN);
@@ -80,6 +94,70 @@ describe('outlineMask', () => {
     let n = 0;
     for (const v of m) n += v;
     expect(n).toBe(0);
+  });
+});
+
+describe('analyze with outlinesBlack', () => {
+  it('keeps a thin anti-aliased line on green completely on the black layer', () => {
+    const a = analyze(panelWithLine(), settings);
+    const black = a.palette.find((p) => p.monoInclude)!;
+    expect(black.name).toBe('schwarz');
+    const core = lineCore(200);
+    expect(core.filter((i) => a.labels[i] === black.id).length).toBe(core.length);
+  });
+
+  it('loses the line without the setting (documents the original problem)', () => {
+    const a = analyze(panelWithLine(), { ...settings, outlinesBlack: false });
+    const black = a.palette.find((p) => p.monoInclude)!;
+    const core = lineCore(200);
+    expect(core.filter((i) => a.labels[i] === black.id).length).toBeLessThan(core.length * 0.5);
+  });
+
+  // A red patch keeps autoLevels from stretching the green to black in these two-colour scenes.
+  it('creates a black entry when no cluster is dark enough', () => {
+    const img = fill(200, WHITE);
+    rect(img, 20, 20, 180, 180, GREEN);
+    rect(img, 150, 30, 175, 55, RED);
+    drawLine(img);
+    const a = analyze(img, settings);
+    const black = a.palette.find((p) => p.monoInclude)!;
+    expect(black.name).toBe('schwarz');
+    expect(black.rgb).toEqual([0, 0, 0]); // the added entry, not an ink cluster
+    expect(black.deleted).toBe(false);
+    const core = lineCore(200);
+    expect(core.filter((i) => a.labels[i] === black.id).length).toBe(core.length);
+    // Green stays a colour of its own.
+    expect(a.palette.some((p) => p.name === 'hellgrün' || p.name === 'grün')).toBe(true);
+    expect(a.palette.filter((p) => p.name === 'schwarz')).toHaveLength(1);
+  });
+
+  it('does not create a black entry for an image without dark lines', () => {
+    const img = fill(200, WHITE);
+    rect(img, 20, 20, 180, 180, GREEN);
+    rect(img, 150, 30, 175, 55, RED);
+    const a = analyze(img, settings);
+    expect(a.palette.map((p) => p.name)).not.toContain('schwarz');
+  });
+
+  it('leaves a dark-green fill crossed by an ink line dark green', () => {
+    const img = panelWithLine();
+    rect(img, 60, 60, 140, 140, DARK_GREEN);
+    drawLine(img);
+    const a = analyze(img, { ...settings, colorCount: 4 });
+    const black = a.palette.find((p) => p.monoInclude)!;
+    const dg = a.palette.find((p) => p.name === 'dunkelgrün')!;
+    expect(dg).toBeDefined();
+    expect(dg.id).not.toBe(black.id);
+    // Pixels of the square farther than 4 px from the line keep the dark-green label.
+    let total = 0;
+    let kept = 0;
+    for (let y = 62; y < 138; y++)
+      for (let x = 62; x < 138; x++) {
+        if (segDist(x + 0.5, y + 0.5, LINE.ax, LINE.ay, LINE.bx, LINE.by) <= 4) continue;
+        total++;
+        if (a.labels[y * 200 + x] === dg.id) kept++;
+      }
+    expect(kept / total).toBeGreaterThan(0.97);
   });
 });
 
