@@ -9,7 +9,9 @@ export const CARRY_MAX_DELTA_E = 15;
  * recolour) after a re-analysis of the same image. Old and new entries are
  * paired one-to-one by nearest Lab distance of their ORIGINAL cluster colours
  * (`originalRgb`), closest pairs first, up to `maxDeltaE`; only entries with the same
- * `role` are paired (background and interior white would otherwise swap). Unpaired new entries
+ * `role` are paired (background and interior white would otherwise swap). When a
+ * re-analysis no longer has an interior entry, its old edits are dropped and merges
+ * into it are reset to null; the background keeps its own edits. Unpaired new entries
  * keep the analysis defaults; mergedInto is remapped to the new ids and
  * dropped when its target has no partner. Returns new objects; inputs stay untouched.
  */

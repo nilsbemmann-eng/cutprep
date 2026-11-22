@@ -60,9 +60,9 @@ describe('splitInteriorBackground', () => {
   it('lets a gap larger than the radius leak', () => {
     const l = ring(60, { from: 10, side: 40, thick: 2, gap: 10 });
     const { labels, interiorLabel } = splitInteriorBackground(l, 60, 60, BG, 2);
-    expect(labels[30 * 60 + 30]).toBe(BG);
-    // At most a few concave-corner pixels stay unreached (the cleanup removes them later).
-    if (interiorLabel !== null) expect(count(labels, interiorLabel)).toBeLessThan(36 * 36 * 0.02);
+    expect(interiorLabel).toBeNull();
+    // Unreached concave-corner pixels stay background (no seed is farther than r from the ring).
+    expect(Array.from(labels)).toEqual(Array.from(l));
   });
 
   it('treats a transparent (-1) border as outside', () => {
@@ -92,5 +92,33 @@ describe('splitInteriorBackground', () => {
     expect(interiorLabel).toBe(7);
     expect(count(labels, 7)).toBe(INSIDE);
     expect(Array.from(l)).toEqual(Array.from(before));
+  });
+  it('keeps a wide enclosed area but not a narrow enclosed channel (width < 2r)', () => {
+    const w = 60;
+    const h = 40;
+    const l = new Int16Array(w * h).fill(BG);
+    // Two closed INK boxes: 20x20 (inside 16x16) and 8x20 (inside a 4 px wide channel).
+    const box = (x0: number, x1: number) => {
+      for (let y = 10; y < 30; y++)
+        for (let x = x0; x < x1; x++)
+          if (x < x0 + 2 || x >= x1 - 2 || y < 12 || y >= 28) l[y * w + x] = INK;
+    };
+    box(5, 25);
+    box(40, 48);
+    const { labels, interiorLabel } = splitInteriorBackground(l, w, h, BG, 3);
+    expect(interiorLabel).toBe(2);
+    expect(count(labels, 2)).toBe(INSIDE);
+    expect(labels[20 * w + 15]).toBe(2);
+    expect(labels[20 * w + 44]).toBe(BG); // channel: every pixel within r of the outline
+  });
+
+  it('encloses areas of a motif that touches the image border', () => {
+    // Ring flush with the top-left corner: the border itself is ink, not outside.
+    const l = ring(40, { from: 0 });
+    const { labels, interiorLabel } = splitInteriorBackground(l, 40, 40, BG, 2);
+    expect(interiorLabel).toBe(2);
+    expect(count(labels, 2)).toBe(INSIDE);
+    expect(labels[39 * 40 + 39]).toBe(BG);
+    expect(labels[0]).toBe(INK);
   });
 });

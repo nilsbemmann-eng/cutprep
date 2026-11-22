@@ -104,4 +104,16 @@ describe('carryOverPaletteEdits', () => {
     const fresh = [entry(0, WHITE, 'weiß', { role: 'interior' })];
     expect(carryOverPaletteEdits(old, fresh)[0].deleted).toBe(false);
   });
+  it('drops interior edits when the re-analysis has no interior entry', () => {
+    const old = [
+      entry(0, WHITE, 'weiß', { role: 'background', deleted: false }),
+      entry(1, RED, 'rot', { mergedInto: 6 }),
+      entry(6, WHITE, 'weiß', { role: 'interior', deleted: true }),
+    ];
+    const fresh = [entry(0, WHITE, 'weiß', { role: 'background', deleted: true }), entry(1, RED, 'rot')];
+    const out = carryOverPaletteEdits(old, fresh);
+    expect(out).toHaveLength(2);
+    expect(out[0].deleted).toBe(false); // background keeps its own edit
+    expect(out[1].mergedInto).toBeNull(); // merge into the vanished interior is reset
+  });
 });

@@ -33,7 +33,7 @@ describe('real fixture palette (grinch, k=6)', () => {
     const bg = a.palette.find((p) => p.role === 'background');
     expect(inner).toMatchObject({ name: 'weiß', deleted: false });
     expect(bg).toMatchObject({ name: 'weiß', deleted: true });
-    // Calibration (gapCloseMm 1.0): interior 9.2 %, background 61.0 % of the image.
+    // Calibration (gapCloseMm 1.0): interior 8.9 %, background 61.3 % of the image.
     // Below ~7 % the fur leaks out again; above ~10.5 % the outside starts counting as interior.
     const total = a.width * a.height;
     expect(inner!.pixelCount / total).toBeGreaterThan(0.07);

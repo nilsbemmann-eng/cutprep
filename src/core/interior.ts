@@ -10,7 +10,9 @@ import { dilate } from './layers';
  * the barrier, and runs through background/transparent pixels outside the barrier.
  * The reached area is dilated by the same radius (restoring the edge next to the
  * outline) and intersected with the background label: that is the outside.
- * Remaining background pixels get `newLabel` (default: max label + 1).
+ * Remaining background pixels get `newLabel` (default: max label + 1), but only where they
+ * are connected to a core pixel farther than the radius from the motif; narrower enclosed
+ * slivers stay background.
  *
  * Returns a new array; `interiorLabel` is null when nothing is enclosed or there is
  * no background. Transparent pixels are never changed.
@@ -66,12 +68,31 @@ export function splitInteriorBackground(
   let maxLabel = -1;
   for (let i = 0; i < total; i++) if (labels[i] > maxLabel) maxLabel = labels[i];
   const interior = newLabel ?? maxLabel + 1;
-  let n = 0;
+
+  // Core filter: only enclosed areas with a core farther than r from the motif count as
+  // interior. Slivers narrower than 2r (between zipper teeth, close letters) and leftover
+  // concave corners stay background. Candidates reached from a core pixel become interior.
+  const isCandidate = (i: number) => labels[i] === bgLabel && !outside[i];
+  tail = 0;
   for (let i = 0; i < total; i++) {
-    if (labels[i] === bgLabel && !outside[i]) {
+    if (!barrier[i] && isCandidate(i)) {
       out[i] = interior;
-      n++;
+      queue[tail++] = i;
     }
   }
-  return { labels: out, interiorLabel: n > 0 ? interior : null };
+  const grow = (p: number): void => {
+    if (out[p] !== interior && isCandidate(p)) {
+      out[p] = interior;
+      queue[tail++] = p;
+    }
+  };
+  for (let head = 0; head < tail; head++) {
+    const p = queue[head];
+    const x = p % w;
+    if (x > 0) grow(p - 1);
+    if (x < w - 1) grow(p + 1);
+    if (p >= w) grow(p - w);
+    if (p < total - w) grow(p + w);
+  }
+  return { labels: out, interiorLabel: tail > 0 ? interior : null };
 }
