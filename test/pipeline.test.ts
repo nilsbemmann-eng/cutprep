@@ -87,19 +87,22 @@ describe('pipeline', () => {
   });
 
   it('drops palette entries wiped out by cleanup', async () => {
-    const img = testImage();
-    // Remove the ring, add tiny black speckles (4 px, far below 1 mm2 = 100 px).
-    for (let y = 0; y < 200; y++)
-      for (let x = 0; x < 200; x++) {
+    // White background, red disc, blue ring and three 4 px black speckles
+    // (far below 1 mm2 = 100 px): the black cluster vanishes during cleanup.
+    const size = 200;
+    const data = new Uint8ClampedArray(size * size * 4).fill(255);
+    for (let y = 0; y < size; y++)
+      for (let x = 0; x < size; x++) {
         const r = Math.hypot(x - 100, y - 100);
-        if (r >= 70 && r < 90) img.data.set([255, 255, 255, 255], (y * 200 + x) * 4);
+        if (r < 50) data.set([220, 20, 20, 255], (y * size + x) * 4);
+        else if (r >= 70 && r < 90) data.set([30, 60, 200, 255], (y * size + x) * 4);
       }
     for (const [sx, sy] of [[5, 5], [150, 20], [30, 160]])
       for (let dy = 0; dy < 2; dy++)
-        for (let dx = 0; dx < 2; dx++) img.data.set([0, 0, 0, 255], ((sy + dy) * 200 + sx + dx) * 4);
-    const s = { ...settings, mode: 'mono' as const };
-    const a = analyze(img, s);
-    expect(a.palette.length).toBeLessThan(3);
+        for (let dx = 0; dx < 2; dx++) data.set([0, 0, 0, 255], ((sy + dy) * size + sx + dx) * 4);
+    const s: Settings = { ...settings, colorCount: 4, mode: 'mono' };
+    const a = analyze({ width: size, height: size, data }, s);
+    expect(a.palette).toHaveLength(3);
     expect(a.palette.every((p) => p.pixelCount > 0)).toBe(true);
     const mono = a.palette.filter((p) => p.monoInclude);
     expect(mono).toHaveLength(1);
