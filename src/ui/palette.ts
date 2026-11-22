@@ -1,4 +1,5 @@
 import { rgbToHex, hexToRgb } from './colorUtil';
+import { germanColorName } from '../core/color';
 import type { PaletteEntry } from '../core/types';
 
 /** Renders the editable palette; mutates the entries and calls onChange. */
@@ -43,6 +44,7 @@ export function renderPalette(
     color.setAttribute('aria-label', `Farbe ${label(e)} ändern`);
     color.addEventListener('change', () => {
       e.rgb = hexToRgb(color.value);
+      e.name = germanColorName(e.rgb);
       onChange();
     });
 
